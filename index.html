@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>川小桥 | 无止 - 实时无障碍地图 (V5.0 流畅版)</title>
+    <title>川小桥 | 无止 - 实时无障碍地图 (V9.0 身份增强版)</title>
     
     <!-- 1. 基础库 -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -24,8 +24,8 @@
     <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
 
     <style>
-        /* 样式 */
         body, html, #root { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; font-family: system-ui, -apple-system, sans-serif; }
+        
         #map-container { position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 0; }
         .ui-layer { position: relative; z-index: 10; pointer-events: none; height: 100%; width: 100%; }
         .pointer-events-auto { pointer-events: auto; }
@@ -38,13 +38,29 @@
             box-shadow: 0 3px 5px rgba(0,0,0,0.3);
             border: 2px solid #FFFFFF;
             display: flex; align-items: center; justify-content: center;
+            transition: all 0.2s ease;
         }
         .marker-pin i { transform: rotate(45deg); font-style: normal; color: white; font-weight: bold; font-size: 14px; }
+        
         .marker-obstacle { background: #ef4444; }
         .marker-facility { background: #22c55e; }
         .marker-experience { background: #3b82f6; }
-        .marker-selected { transform: rotate(-45deg) scale(1.2); border-color: #fbbf24; z-index: 999; }
+        
+        /* [新功能] 别人的点显示为半透明，自己的点完全不透明 */
+        .marker-others { opacity: 0.6; filter: grayscale(30%); transform: rotate(-45deg) scale(0.9) !important; }
+        .marker-mine { z-index: 800 !important; border-color: #fff; box-shadow: 0 4px 8px rgba(0,0,0,0.4); }
+
+        .marker-selected { transform: rotate(-45deg) scale(1.3) !important; border-color: #fbbf24; z-index: 999 !important; opacity: 1 !important; filter: none !important; }
+        
         .map-crosshair { cursor: crosshair !important; }
+        
+        /* 开关样式 */
+        .toggle-checkbox:checked { right: 0; border-color: #3b82f6; }
+        .toggle-checkbox:checked + .toggle-label { background-color: #3b82f6; }
+        
+        /* 仪表盘动画 */
+        @keyframes gauge { from { width: 0%; } }
+        .gauge-anim { animation: gauge 1s ease-out forwards; }
     </style>
 </head>
 <body>
@@ -57,12 +73,12 @@
         // ⚠️ 配置区域
         // ============================================================================
         const FIREBASE_CONFIG = {
-            apiKey: "AIzaSyCcBlaYfmLizo1E6mV87U6ytReqSuMTX5M",
-            authDomain: "scuwzq-9bcfb.firebaseapp.com",
-            projectId: "scuwzq-9bcfb",
-            storageBucket: "scuwzq-9bcfb.firebasestorage.app",
-            messagingSenderId: "1028374721634",
-            appId: "1:1028374721634:web:30714cb0acb6a951590d3b" 
+        apiKey: "AIzaSyCcBlaYfmLizo1E6mV87U6ytReqSuMTX5M",
+        authDomain: "scuwzq-9bcfb.firebaseapp.com",
+        projectId: "scuwzq-9bcfb",
+        storageBucket: "scuwzq-9bcfb.firebasestorage.app",
+        messagingSenderId: "1028374721634",
+        appId: "1:1028374721634:web:30714cb0acb6a951590d3b" 
         };
         // ============================================================================
 
@@ -77,10 +93,11 @@
                 db = firebase.firestore();
                 db.settings({ merge: true });
                 isOfflineMode = false;
+                console.log("🔥 在线模式");
             } catch (e) { console.error(e); }
         }
 
-        // --- 图标 ---
+        // --- 图标库 ---
         const Icons = {
             Navigation: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>,
             AlertTriangle: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>,
@@ -96,7 +113,12 @@
             Activity: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>,
             Star: ({size=24, fill="none"}) => <svg width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
             Upload: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>,
-            Image: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            Image: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>,
+            Layers: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>,
+            Eye: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>,
+            EyeOff: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>,
+            Trophy: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 21h8m-4-9v9m-6.7-6.27a4 4 0 1 1 0-7.73h13.4a4 4 0 1 1 0 7.73z"/></svg>,
+            User: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         };
 
         const OBSTACLE_CATEGORIES = [
@@ -108,10 +130,35 @@
             { value: 'other', label: '其他问题' },
         ];
 
-        // --- 地图组件 ---
-        const MapView = React.memo(({ markers, selectedMarkerId, activeTool, onMapClick, onMarkerClick, onMapReady }) => {
+        const TILE_LAYERS = {
+            standard: { name: "标准", url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", attribution: '&copy; CARTO' },
+            satellite: { name: "卫星", url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", attribution: '&copy; Esri' },
+            simple: { name: "极简", url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", attribution: '&copy; CARTO' }
+        };
+
+        // --- 工具函数：生成随机代号 ---
+        const generateRandomName = () => {
+            const adjs = ['热心', '神秘', '快乐', '勤劳', '专业', '闪电'];
+            const nouns = ['志愿者', '行者', '观察员', '测绘师', '小桥人'];
+            return adjs[Math.floor(Math.random()*adjs.length)] + nouns[Math.floor(Math.random()*nouns.length)] + '_' + Math.floor(Math.random()*1000);
+        };
+
+        // 防抖输入框
+        const DebouncedTextarea = ({ value, onSave, placeholder }) => {
+            const [localValue, setLocalValue] = useState(value);
+            useEffect(() => setLocalValue(value), [value]);
+            useEffect(() => {
+                const timer = setTimeout(() => { if (localValue !== value) onSave(localValue); }, 500);
+                return () => clearTimeout(timer);
+            }, [localValue]);
+            return <textarea value={localValue} onChange={(e) => setLocalValue(e.target.value)} className="w-full border rounded p-2 h-20 text-sm" placeholder={placeholder}/>;
+        };
+
+        // --- 地图组件 (支持区分自己的/别人的标记) ---
+        const MapView = React.memo(({ markers, selectedMarkerId, activeTool, onMapClick, onMarkerClick, onMapReady, activeBaseLayer, visibleTypes, currentUserId }) => {
             const mapRef = useRef(null);
             const markersLayerRef = useRef(null);
+            const tileLayerRef = useRef(null);
             const onMapClickRef = useRef(onMapClick);
             const onMarkerClickRef = useRef(onMarkerClick);
 
@@ -122,27 +169,21 @@
 
             useEffect(() => {
                 if (!mapRef.current) {
-                    const map = L.map('map-container', {
-                        center: [30.556, 103.998],
-                        zoom: 16,
-                        zoomControl: false,
-                        tap: false
-                    });
-
-                    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-                        attribution: '&copy; OpenStreetMap, &copy; CARTO',
-                        maxZoom: 20
-                    }).addTo(map);
-
+                    const map = L.map('map-container', { center: [30.556, 103.998], zoom: 16, zoomControl: false, tap: false });
+                    tileLayerRef.current = L.tileLayer(TILE_LAYERS[activeBaseLayer].url, { attribution: TILE_LAYERS[activeBaseLayer].attribution, maxZoom: 20 }).addTo(map);
                     markersLayerRef.current = L.layerGroup().addTo(map);
                     mapRef.current = map;
                     if(onMapReady) onMapReady(map);
-
-                    map.on('click', (e) => {
-                        if(onMapClickRef.current) onMapClickRef.current(e.latlng);
-                    });
+                    map.on('click', (e) => { if(onMapClickRef.current) onMapClickRef.current(e.latlng); });
                 }
             }, []);
+
+            useEffect(() => {
+                if (mapRef.current && tileLayerRef.current) {
+                    mapRef.current.removeLayer(tileLayerRef.current);
+                    tileLayerRef.current = L.tileLayer(TILE_LAYERS[activeBaseLayer].url, { attribution: TILE_LAYERS[activeBaseLayer].attribution, maxZoom: 20 }).addTo(mapRef.current);
+                }
+            }, [activeBaseLayer]);
 
             useEffect(() => {
                 if (!mapRef.current || !markersLayerRef.current) return;
@@ -150,12 +191,21 @@
 
                 markers.forEach(m => {
                     if (!m.lat || !m.lng) return;
+                    if (!visibleTypes[m.type]) return;
+
                     const colorClass = m.type === 'obstacle' ? 'marker-obstacle' : m.type === 'facility' ? 'marker-facility' : 'marker-experience';
                     const symbol = m.type === 'obstacle' ? '!' : m.type === 'facility' ? '✓' : 'i';
                     
+                    // [核心] 区分自己和别人
+                    // 1. 自己打的点：marker-mine (高亮、置顶)
+                    // 2. 别人打的点：marker-others (半透明)
+                    const isMine = m.userId === currentUserId; 
+                    const ownershipClass = isMine ? 'marker-mine' : 'marker-others';
+                    const selectedClass = selectedMarkerId === m.id ? 'marker-selected' : '';
+
                     const icon = L.divIcon({
                         className: 'custom-div-icon',
-                        html: `<div class="marker-pin ${colorClass} ${selectedMarkerId === m.id ? 'marker-selected' : ''}"><i>${symbol}</i></div>`,
+                        html: `<div class="marker-pin ${colorClass} ${ownershipClass} ${selectedClass}"><i>${symbol}</i></div>`,
                         iconSize: [30, 42],
                         iconAnchor: [15, 42]
                     });
@@ -168,7 +218,7 @@
                     });
                     marker.addTo(markersLayerRef.current);
                 });
-            }, [markers, selectedMarkerId]);
+            }, [markers, selectedMarkerId, visibleTypes, currentUserId]); // 依赖项增加 currentUserId
 
             useEffect(() => {
                 const el = document.getElementById('map-container');
@@ -188,11 +238,46 @@
             const [showSidebar, setShowSidebar] = useState(true);
             const [showStats, setShowStats] = useState(false);
             const [isConnected, setIsConnected] = useState(false);
-            const [userName, setUserName] = useState('热心志愿者');
+            
+            // [核心] 用户身份状态
+            const [userName, setUserName] = useState('');
+            const [currentUserId, setCurrentUserId] = useState('');
+            
+            const [activeBaseLayer, setActiveBaseLayer] = useState('standard');
+            const [visibleTypes, setVisibleTypes] = useState({ obstacle: true, facility: true, experience: true });
             
             const mapInstanceRef = useRef(null);
             const markerImageInputRef = useRef(null);
 
+            // --- 初始化用户身份 (持久化) ---
+            useEffect(() => {
+                // 1. 先尝试从 localStorage 读取
+                let savedName = localStorage.getItem('user_nickname');
+                let savedId = localStorage.getItem('user_id');
+
+                // 2. 如果没有，自动生成一个新的
+                if (!savedId) {
+                    savedId = 'uid_' + Math.random().toString(36).substr(2, 9);
+                    localStorage.setItem('user_id', savedId);
+                }
+                if (!savedName) {
+                    savedName = generateRandomName();
+                    localStorage.setItem('user_nickname', savedName);
+                }
+
+                // 3. 更新状态
+                setCurrentUserId(savedId);
+                setUserName(savedName);
+            }, []);
+
+            // 监听昵称修改，同步保存到 localStorage
+            const handleNameChange = (e) => {
+                const newName = e.target.value;
+                setUserName(newName);
+                localStorage.setItem('user_nickname', newName);
+            };
+
+            // Firebase 初始化
             useEffect(() => {
                 if (!isOfflineMode && auth) {
                     auth.signInAnonymously().catch(e => console.error(e));
@@ -213,23 +298,12 @@
                 }
             }, []);
 
-            // --- 核心修复：乐观 UI 更新 ---
-            // 1. 先在本地立刻更新
-            // 2. 然后再去云端同步
-            // 这样输入法就不会被打断了
             const updateLocalMarker = async (id, updates) => {
-                // 1. 立即更新 React 状态 (UI 0延迟)
                 setMarkers(prev => prev.map(m => m.id === id ? { ...m, ...updates } : m));
-
-                // 2. 后台同步到云端
                 if (!isOfflineMode && db && isConnected && !id.startsWith('local_')) {
                      const cleanUpdates = JSON.parse(JSON.stringify(updates));
-                     // 不 await，让它在后台跑
-                     db.collection('markers').doc(id).update(cleanUpdates).catch(e => console.error("后台同步失败", e));
+                     db.collection('markers').doc(id).update(cleanUpdates).catch(e => console.error("同步失败", e));
                 } else {
-                    // 离线模式同步 localStorage
-                    // 注意：这里需要用最新的 state，但由于闭包，我们得重新计算一次或者在 effect 里存
-                    // 简化起见，我们重新执行一次 map 逻辑来存 localstorage
                     setTimeout(() => {
                         const currentMarkers = JSON.parse(localStorage.getItem('offline_markers') || '[]');
                         const newMarkers = currentMarkers.map(m => m.id === id ? { ...m, ...updates } : m);
@@ -240,8 +314,6 @@
 
             const saveMarker = async (data) => {
                 const cleanData = JSON.parse(JSON.stringify(data));
-                
-                // 1. 乐观插入本地
                 const tempId = 'temp_' + Date.now();
                 const optimisticMarker = { ...cleanData, id: tempId };
                 setMarkers(prev => [...prev, optimisticMarker]);
@@ -249,16 +321,14 @@
                 if (!isOfflineMode && db && isConnected) {
                     try { 
                         const ref = await db.collection('markers').add(cleanData); 
-                        // 替换临时 ID 为真实 ID
                         setMarkers(prev => prev.map(m => m.id === tempId ? { ...m, id: ref.id } : m));
-                        if (selectedMarkerId === tempId) setSelectedMarkerId(ref.id); // 如果刚好选中了，也更新选中ID
+                        if (selectedMarkerId === tempId) setSelectedMarkerId(ref.id);
                         return ref.id; 
                     } 
                     catch (e) { return null; }
                 } else {
                     const newId = 'local_' + Date.now();
                     setMarkers(prev => prev.map(m => m.id === tempId ? { ...m, id: newId } : m));
-                    // 持久化
                     const currentSaved = JSON.parse(localStorage.getItem('offline_markers') || '[]');
                     localStorage.setItem('offline_markers', JSON.stringify([...currentSaved, { ...cleanData, id: newId }]));
                     return newId;
@@ -267,13 +337,11 @@
 
             const deleteLocalMarker = async (id) => {
                  if (!confirm("确定删除吗？")) return;
-                 
-                 // 1. 立即从 UI 移除
                  setMarkers(prev => prev.filter(m => m.id !== id));
                  setSelectedMarkerId(null);
 
                  if (!isOfflineMode && db && isConnected && !id.startsWith('local_')) {
-                     db.collection('markers').doc(id).delete().catch(e => alert("云端删除失败"));
+                     db.collection('markers').doc(id).delete().catch(e => alert("删除失败"));
                 } else {
                     const currentSaved = JSON.parse(localStorage.getItem('offline_markers') || '[]');
                     const newSaved = currentSaved.filter(m => m.id !== id);
@@ -282,7 +350,7 @@
             };
 
             const handleMapClick = async (latlng) => {
-                if (!activeTool) return;
+                if (!activeTool) return; 
                 if (selectedMarkerId) { setSelectedMarkerId(null); return; }
 
                 const { lat, lng } = latlng;
@@ -290,7 +358,8 @@
                     lat, lng, 
                     type: activeTool, 
                     description: '', 
-                    author: userName, 
+                    author: userName,       // 写入当前昵称
+                    userId: currentUserId,  // [核心] 写入当前用户的唯一ID
                     timestamp: Date.now(),
                     category: activeTool === 'obstacle' ? 'other' : null,
                     severity: activeTool === 'obstacle' ? 'medium' : null,
@@ -298,17 +367,6 @@
                     imageUrl: ''
                 };
 
-                // 乐观更新，直接拿到临时 ID 或真实 ID
-                // 注意：saveMarker 改成了异步但内部有乐观更新，我们可以假设它成功
-                // 这里稍微有点 tricky，因为 saveMarker 的返回值如果是 promise，我们拿不到立即的 ID
-                // 但我们修改了 saveMarker 逻辑让它先返回临时 ID 吗？不，async 函数返回 promise。
-                // 简单起见，我们依赖 saveMarker 内部的 setMarkers
-                // 但为了选中新点，我们需要知道 ID。
-                
-                // 重新调整 handleMapClick 逻辑：
-                // 我们直接生成 ID
-                const newId = !isOfflineMode ? null : 'local_' + Date.now(); 
-                // 实际上 saveMarker 里的逻辑比较复杂，为了不破坏现有结构，我们等待它返回
                 const id = await saveMarker(newData);
                 if (id) {
                     setActiveTool(null); 
@@ -332,27 +390,41 @@
 
             const handleSaveSnapshot = () => {
                 alert("正在生成截图...");
+                const mapContainer = document.getElementById('map-container');
                 document.querySelectorAll('.ui-layer').forEach(el => el.style.visibility = 'hidden');
-                html2canvas(document.body, { useCORS: true, allowTaint: true, ignoreElements: (el) => el.classList.contains('modal-z') })
-                .then(canvas => {
+                html2canvas(mapContainer, { useCORS: true, allowTaint: false, logging: false, width: mapContainer.offsetWidth, height: mapContainer.offsetHeight }).then(canvas => {
                     document.querySelectorAll('.ui-layer').forEach(el => el.style.visibility = 'visible');
-                    const link = document.createElement('a');
-                    link.download = `川小桥_快照_${Date.now()}.png`;
-                    link.href = canvas.toDataURL();
-                    link.click();
+                    const ctx = canvas.getContext('2d');
+                    markers.forEach(m => {
+                        if(!mapInstanceRef.current || !visibleTypes[m.type]) return;
+                        const point = mapInstanceRef.current.latLngToContainerPoint([m.lat, m.lng]);
+                        ctx.beginPath(); ctx.arc(point.x, point.y - 15, 15, 0, 2 * Math.PI);
+                        // 绘制时也考虑是否是自己的点（稍微不同颜色或边框）
+                        ctx.fillStyle = m.type === 'obstacle' ? '#ef4444' : m.type === 'facility' ? '#22c55e' : '#3b82f6';
+                        ctx.fill(); ctx.strokeStyle = 'white'; ctx.lineWidth = 3; ctx.stroke();
+                        ctx.fillStyle = 'white'; ctx.font = 'bold 16px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                        const symbol = m.type === 'obstacle' ? '!' : m.type === 'facility' ? '✓' : 'i';
+                        ctx.fillText(symbol, point.x, point.y - 15);
+                        ctx.beginPath(); ctx.moveTo(point.x - 10, point.y - 5); ctx.lineTo(point.x + 10, point.y - 5); ctx.lineTo(point.x, point.y + 10);
+                        ctx.fillStyle = m.type === 'obstacle' ? '#ef4444' : m.type === 'facility' ? '#22c55e' : '#3b82f6'; ctx.fill();
+                    });
+                    const link = document.createElement('a'); link.download = `川小桥_快照_${Date.now()}.png`; link.href = canvas.toDataURL(); link.click();
                 }).catch(err => {
                     document.querySelectorAll('.ui-layer').forEach(el => el.style.visibility = 'visible');
-                    alert("截图失败，请尝试系统截屏。");
+                    alert("截图失败");
                 });
             };
 
-            const flyToSchool = () => {
-                if (mapInstanceRef.current) mapInstanceRef.current.flyTo([30.556, 103.998], 16);
-            }
+            const flyToSchool = () => { if (mapInstanceRef.current) mapInstanceRef.current.flyTo([30.556, 103.998], 16); }
+            const toggleLayer = (type) => { setVisibleTypes(prev => ({...prev, [type]: !prev[type]})); };
 
             const renderDetailForm = () => {
                 const m = markers.find(mk => mk.id === selectedMarkerId);
                 if (!m) return null;
+                // 只有自己的点，或者管理员（这里简化为所有人都可以删除，但UI上可以提示）才显示删除按钮
+                // 这里为了方便协作，依然允许所有人删除，但显示记录人名字
+                const isMine = m.userId === currentUserId;
+
                 return (
                     <div className="absolute top-4 right-4 w-80 bg-white rounded-xl shadow-2xl border border-slate-200 z-[2000] overflow-hidden flex flex-col max-h-[90vh] pointer-events-auto">
                         <div className={`p-4 text-white flex justify-between items-center ${m.type === 'obstacle' ? 'bg-red-500' : m.type === 'facility' ? 'bg-green-500' : 'bg-blue-500'}`}>
@@ -360,7 +432,13 @@
                             <button onClick={() => setSelectedMarkerId(null)}><Icons.X size={18}/></button>
                         </div>
                         <div className="p-4 space-y-4 overflow-y-auto text-sm">
-                            <div className="text-xs text-slate-400">记录人: {m.author}</div>
+                            <div className="flex justify-between items-center">
+                                <span className="text-xs text-slate-400 flex items-center gap-1">
+                                    <Icons.User size={12}/> {isMine ? '我' : m.author}
+                                </span>
+                                {!isMine && <span className="text-[10px] bg-gray-100 px-2 py-1 rounded text-gray-500">他人贡献</span>}
+                            </div>
+                            
                             {m.type === 'obstacle' && (
                                 <div>
                                     <label className="block font-bold mb-1">障碍类型</label>
@@ -381,8 +459,7 @@
                                     </div>
                                 </div>
                             )}
-                            {/* 这里的 textarea 现在更新是瞬时的，不会卡顿了 */}
-                            <textarea value={m.description} onChange={e => updateLocalMarker(m.id, {description: e.target.value})} className="w-full border rounded p-2 h-20" placeholder="描述情况..."></textarea>
+                            <DebouncedTextarea value={m.description} onSave={(val) => updateLocalMarker(m.id, {description: val})} placeholder="请描述现场情况..."/>
                             <div className="border-t pt-3">
                                 <div className="flex justify-between items-center mb-2">
                                     <span className="font-bold">照片</span>
@@ -410,17 +487,48 @@
                 const total = markers.length;
                 const obstacleCount = markers.filter(m => m.type === 'obstacle').length;
                 const facilityCount = markers.filter(m => m.type === 'facility').length;
+                const highSeverityCount = markers.filter(m => m.type === 'obstacle' && m.severity === 'high').length;
+                let healthScore = 60 + (facilityCount * 5) - (obstacleCount * 2) - (highSeverityCount * 5);
+                healthScore = Math.max(0, Math.min(100, healthScore));
+                
+                // 统计榜单
+                const contributorMap = {};
+                markers.forEach(m => {
+                    const name = m.author || '匿名';
+                    contributorMap[name] = (contributorMap[name] || 0) + 1;
+                });
+                const leaderboard = Object.entries(contributorMap).sort((a, b) => b[1] - a[1]).slice(0, 3);
+
                 return (
                     <div className="fixed inset-0 z-[3000] bg-black/50 flex items-center justify-center p-4 pointer-events-auto">
-                        <div className="bg-white rounded-xl w-full max-w-lg p-6 relative">
+                        <div className="bg-white rounded-xl w-full max-w-2xl p-6 relative flex flex-col max-h-[90vh]">
                             <button onClick={() => setShowStats(false)} className="absolute top-4 right-4"><Icons.X/></button>
-                            <h2 className="text-lg font-bold mb-4 flex gap-2"><Icons.BarChart2 className="text-blue-600"/> 数据统计</h2>
-                            <div className="grid grid-cols-3 gap-4 mb-6">
-                                <div className="bg-blue-50 p-3 rounded text-center"><div className="text-2xl font-bold text-blue-600">{total}</div><div className="text-xs">总标记</div></div>
-                                <div className="bg-red-50 p-3 rounded text-center"><div className="text-2xl font-bold text-red-600">{obstacleCount}</div><div className="text-xs">障碍</div></div>
-                                <div className="bg-green-50 p-3 rounded text-center"><div className="text-2xl font-bold text-green-600">{facilityCount}</div><div className="text-xs">设施</div></div>
+                            <h2 className="text-xl font-bold mb-6 flex gap-2 items-center text-slate-800"><Icons.BarChart2 className="text-blue-600"/> 校园数据洞察</h2>
+                            <div className="overflow-y-auto space-y-6 pr-2">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="bg-blue-50 p-5 rounded-2xl border border-blue-100 flex flex-col items-center justify-center relative">
+                                        <div className="text-sm text-blue-500 font-bold mb-1">无障碍健康指数</div>
+                                        <div className="text-5xl font-black text-blue-700 z-10">{healthScore}</div>
+                                        <div className="w-full bg-gray-200 h-2 rounded-full mt-3"><div className="h-full bg-blue-500 gauge-anim" style={{width: `${healthScore}%`}}></div></div>
+                                    </div>
+                                    <div className="bg-red-50 p-5 rounded-2xl border border-red-100">
+                                        <div className="flex justify-between mb-4"><span className="text-sm font-bold text-red-600 flex gap-1"><Icons.AlertTriangle size={16}/> 严重预警</span><span className="text-2xl font-black text-red-600">{highSeverityCount}</span></div>
+                                        <div className="text-xs text-red-800">严重障碍占比: {obstacleCount>0?((highSeverityCount/obstacleCount)*100).toFixed(0):0}%</div>
+                                    </div>
+                                    <div className="bg-yellow-50 p-5 rounded-2xl border border-yellow-100">
+                                        <div className="text-sm font-bold text-yellow-700 mb-3 flex items-center gap-1"><Icons.Trophy size={16}/> 贡献榜</div>
+                                        <div className="space-y-2">
+                                            {leaderboard.map((u, i) => (
+                                                <div key={u[0]} className="flex justify-between text-xs bg-white/50 p-2 rounded">
+                                                    <div className="flex gap-2"><span className={`w-4 h-4 rounded-full flex justify-center text-[10px] font-bold ${i===0?'bg-yellow-400 text-white':'bg-gray-300 text-white'}`}>{i+1}</span><span className="truncate max-w-[80px]">{u[0]}</span></div>
+                                                    <span className="font-bold text-yellow-600">{u[1]}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                            <div className="text-center"><button onClick={exportData} className="text-blue-600 text-sm hover:underline">导出 JSON</button></div>
+                            <div className="text-center mt-4"><button onClick={exportData} className="text-blue-600 text-sm hover:underline">导出数据</button></div>
                         </div>
                     </div>
                 );
@@ -429,12 +537,8 @@
             return (
                 <div className="flex flex-col md:flex-row h-screen bg-slate-50 text-slate-900 font-sans overflow-hidden relative">
                     <MapView 
-                        markers={markers} 
-                        selectedMarkerId={selectedMarkerId} 
-                        activeTool={activeTool} 
-                        onMapClick={handleMapClick}
-                        onMarkerClick={setSelectedMarkerId}
-                        onMapReady={(map) => mapInstanceRef.current = map}
+                        markers={markers} selectedMarkerId={selectedMarkerId} activeTool={activeTool} onMapClick={handleMapClick} onMarkerClick={setSelectedMarkerId} onMapReady={(map) => mapInstanceRef.current = map}
+                        activeBaseLayer={activeBaseLayer} visibleTypes={visibleTypes} currentUserId={currentUserId}
                     />
                     <div className="ui-layer flex h-full pointer-events-none">
                         <div className={`${showSidebar?'w-80':'w-0'} bg-white border-r flex flex-col transition-all shadow-xl pointer-events-auto overflow-hidden`}>
@@ -442,14 +546,33 @@
                                 <h1 className="text-xl font-bold flex gap-2 text-slate-800"><span className="text-blue-600"><Icons.Navigation/></span> 川小桥 | 实时版</h1>
                                 <div className="mt-2 flex items-center gap-2 text-xs">
                                     {isConnected ? <span className="text-green-600 flex gap-1"><Icons.Wifi size={14}/> 在线</span> : <span className="text-slate-400 flex gap-1"><Icons.WifiOff size={14}/> 离线</span>}
-                                    <input value={userName} onChange={e=>setUserName(e.target.value)} className="border-b w-20 bg-transparent outline-none" placeholder="昵称"/>
+                                    <input value={userName} onChange={handleNameChange} className="border-b w-24 bg-transparent outline-none font-bold text-slate-700" placeholder="你的昵称"/>
                                 </div>
                             </div>
-                            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                                <div className="space-y-2">
-                                    <button onClick={() => setActiveTool('obstacle')} className={`w-full flex gap-3 p-3 border rounded-lg transition-colors ${activeTool==='obstacle'?'bg-red-50 border-red-500 ring-2 ring-red-200':''}`}><div className="text-red-600 bg-red-100 p-2 rounded-full"><Icons.AlertTriangle/></div><div className="text-left"><div className="font-bold text-sm">障碍点</div><div className="text-xs text-slate-500">标记台阶/陡坡</div></div></button>
-                                    <button onClick={() => setActiveTool('facility')} className={`w-full flex gap-3 p-3 border rounded-lg transition-colors ${activeTool==='facility'?'bg-green-50 border-green-500 ring-2 ring-green-200':''}`}><div className="text-green-600 bg-green-100 p-2 rounded-full"><Icons.CheckCircle/></div><div className="text-left"><div className="font-bold text-sm">设施点</div><div className="text-xs text-slate-500">标记电梯/坡道</div></div></button>
-                                    <button onClick={() => setActiveTool('experience')} className={`w-full flex gap-3 p-3 border rounded-lg transition-colors ${activeTool==='experience'?'bg-blue-50 border-blue-500 ring-2 ring-blue-200':''}`}><div className="text-blue-600 bg-blue-100 p-2 rounded-full"><Icons.Users/></div><div className="text-left"><div className="font-bold text-sm">体验点</div><div className="text-xs text-slate-500">通过感受/建议</div></div></button>
+                            <div className="flex-1 overflow-y-auto p-4 space-y-6">
+                                <div>
+                                    <h3 className="text-xs font-bold text-slate-400 uppercase mb-2">添加标记</h3>
+                                    <div className="space-y-2">
+                                        <button onClick={() => setActiveTool('obstacle')} className={`w-full flex gap-3 p-3 border rounded-lg transition-colors ${activeTool==='obstacle'?'bg-red-50 border-red-500 ring-2 ring-red-200':''}`}><div className="text-red-600 bg-red-100 p-2 rounded-full"><Icons.AlertTriangle/></div><div className="text-left"><div className="font-bold text-sm">障碍点</div><div className="text-xs text-slate-500">标记台阶/陡坡</div></div></button>
+                                        <button onClick={() => setActiveTool('facility')} className={`w-full flex gap-3 p-3 border rounded-lg transition-colors ${activeTool==='facility'?'bg-green-50 border-green-500 ring-2 ring-green-200':''}`}><div className="text-green-600 bg-green-100 p-2 rounded-full"><Icons.CheckCircle/></div><div className="text-left"><div className="font-bold text-sm">设施点</div><div className="text-xs text-slate-500">标记电梯/坡道</div></div></button>
+                                        <button onClick={() => setActiveTool('experience')} className={`w-full flex gap-3 p-3 border rounded-lg transition-colors ${activeTool==='experience'?'bg-blue-50 border-blue-500 ring-2 ring-blue-200':''}`}><div className="text-blue-600 bg-blue-100 p-2 rounded-full"><Icons.Users/></div><div className="text-left"><div className="font-bold text-sm">体验点</div><div className="text-xs text-slate-500">通过感受/建议</div></div></button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <h3 className="text-xs font-bold text-slate-400 uppercase mb-2 flex items-center gap-1"><Icons.Layers size={14}/> 图层管理</h3>
+                                    <div className="flex bg-slate-100 p-1 rounded-lg mb-3">
+                                        {Object.keys(TILE_LAYERS).map(key => (
+                                            <button key={key} onClick={() => setActiveBaseLayer(key)} className={`flex-1 py-1 text-xs rounded-md transition-all ${activeBaseLayer === key ? 'bg-white shadow text-blue-600 font-bold' : 'text-slate-500 hover:text-slate-700'}`}>{TILE_LAYERS[key].name}</button>
+                                        ))}
+                                    </div>
+                                    <div className="space-y-2">
+                                        {[{ id: 'obstacle', label: '障碍点', color: 'text-red-500' }, { id: 'facility', label: '设施点', color: 'text-green-500' }, { id: 'experience', label: '体验点', color: 'text-blue-500' }].map(item => (
+                                            <div key={item.id} className="flex items-center justify-between p-2 border rounded hover:bg-slate-50 cursor-pointer" onClick={() => toggleLayer(item.id)}>
+                                                <div className="flex items-center gap-2"><span className={`w-2 h-2 rounded-full ${item.id === 'obstacle' ? 'bg-red-500' : item.id === 'facility' ? 'bg-green-500' : 'bg-blue-500'}`}></span><span className="text-sm text-slate-700">{item.label}</span></div>
+                                                {visibleTypes[item.id] ? <Icons.Eye size={16} className="text-slate-400"/> : <Icons.EyeOff size={16} className="text-slate-300"/>}
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                                 <div className="text-xs text-slate-400 text-center pt-2">
                                     <button onClick={flyToSchool} className="text-blue-500 hover:underline mt-1 flex items-center justify-center gap-1"><Icons.Navigation size={12}/> 回到江安校区</button>
