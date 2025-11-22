@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>川小桥 | 无止 - 实时无障碍地图 (最终修复版)</title>
+    
+    <!-- 1. 基础库 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- 2. Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+
+    <!-- 3. Leaflet 地图 -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    
+    <!-- 4. 截图库 -->
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+
+    <style>
+        /* 强制全屏无滚动 */
+        body, html, #root { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; font-family: system-ui, -apple-system, sans-serif; }
+        
+        /* 标记样式 */
+        .custom-div-icon { background: transparent; border: none; }
+        .marker-pin {
+            width: 30px; height: 30px; border-radius: 50% 50% 50% 0; background: #3b82f6; position: absolute; transform: rotate(-45deg);
+            left: 50%; top: 50%; margin: -15px 0 0 -15px;
+            box-shadow: 0 3px 5px rgba(0,0,0,0.3);
+            border: 2px solid #FFFFFF;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .marker-pin i { transform: rotate(45deg); font-style: normal; color: white; font-weight: bold; font-size: 14px; }
+        
+        .marker-obstacle { background: #ef4444; }
+        .marker-facility { background: #22c55e; }
+        .marker-experience { background: #3b82f6; }
+        .marker-selected { transform: rotate(-45deg) scale(1.3); border-color: #fbbf24; z-index: 999; }
+        .map-crosshair { cursor: crosshair !important; }
+        
+        /* 确保地图在最底层，但内容可见 */
+        #map-container { position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 0; }
+        /* 侧边栏和弹窗层级 */
+        .ui-layer { position: relative; z-index: 10; pointer-events: none; height: 100%; width: 100%; }
+        .pointer-events-auto { pointer-events: auto; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useMemo } = React;
+
+        // ============================================================================
+        // ⚠️ 配置区域
+        // ============================================================================
+        const FIREBASE_CONFIG = {
+            apiKey: "AIzaSyCcBlaYfmLizo1E6mV87U6ytReqSuMTX5M",
+            authDomain: "scuwzq-9bcfb.firebaseapp.com",
+            projectId: "scuwzq-9bcfb",
+            storageBucket: "scuwzq-9bcfb.firebasestorage.app",
+            messagingSenderId: "1028374721634",
+            appId: "1:1028374721634:web:30714cb0acb6a951590d3b" 
+        };
+        // ============================================================================
+
+        let db = null;
+        let auth = null;
+        let isOfflineMode = true;
+
+        if (FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.apiKey.length > 5) {
+            try {
+                if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+                auth = firebase.auth();
+                db = firebase.firestore();
+                db.settings({ merge: true });
+                isOfflineMode = false;
+                console.log("🔥 在线模式");
+            } catch (e) { console.error(e); }
+        }
+
+        // --- 图标组件 ---
+        const Icons = {
+            Navigation: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>,
+            AlertTriangle: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>,
+            CheckCircle: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>,
+            Users: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
+            X: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
+            Wifi: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>,
+            WifiOff: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.58 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>,
+            Download: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
+            Camera: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>,
+            BarChart2: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>,
+            PieChart: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>,
+            Activity: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>,
+            Star: ({size=24, fill="none"}) => <svg width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
+            Upload: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>,
+            Image: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        };
+
+        const OBSTACLE_CATEGORIES = [
+            { value: 'stairs', label: '台阶/高差' },
+            { value: 'slope', label: '坡度过陡' },
+            { value: 'surface', label: '路面不平/坑洼' },
+            { value: 'width', label: '通道过窄' },
+            { value: 'blocked', label: '盲道被占用/阻断' },
+            { value: 'other', label: '其他问题' },
+        ];
+
+        // --- 独立的地图组件 (修复闭包陷阱) ---
+        const MapView = React.memo(({ markers, selectedMarkerId, activeTool, onMapClick, onMarkerClick, onMapReady }) => {
+            const mapRef = useRef(null);
+            const markersLayerRef = useRef(null);
+            // 关键：使用 ref 存储最新的回调函数，防止闭包问题
+            const onMapClickRef = useRef(onMapClick);
+            const onMarkerClickRef = useRef(onMarkerClick);
+
+            // 每次渲染都更新 ref 指向最新的函数
+            useEffect(() => {
+                onMapClickRef.current = onMapClick;
+                onMarkerClickRef.current = onMarkerClick;
+            }, [onMapClick, onMarkerClick]);
+
+            useEffect(() => {
+                if (!mapRef.current) {
+                    console.log("初始化 Leaflet 地图...");
+                    const map = L.map('map-container', {
+                        center: [30.556, 103.998],
+                        zoom: 16,
+                        zoomControl: false,
+                        tap: false
+                    });
+
+                    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+                        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                        maxZoom: 20
+                    }).addTo(map);
+
+                    markersLayerRef.current = L.layerGroup().addTo(map);
+                    mapRef.current = map;
+                    
+                    if(onMapReady) onMapReady(map);
+
+                    map.on('click', (e) => {
+                        // 始终调用 ref 中的最新函数
+                        if(onMapClickRef.current) onMapClickRef.current(e.latlng);
+                    });
+                }
+            }, []);
+
+            useEffect(() => {
+                if (!mapRef.current || !markersLayerRef.current) return;
+                markersLayerRef.current.clearLayers();
+
+                markers.forEach(m => {
+                    if (!m.lat || !m.lng) return;
+
+                    const colorClass = m.type === 'obstacle' ? 'marker-obstacle' : 
+                                       m.type === 'facility' ? 'marker-facility' : 'marker-experience';
+                    const symbol = m.type === 'obstacle' ? '!' : m.type === 'facility' ? '✓' : 'i';
+                    
+                    const icon = L.divIcon({
+                        className: 'custom-div-icon',
+                        html: `<div class="marker-pin ${colorClass} ${selectedMarkerId === m.id ? 'marker-selected' : ''}"><i>${symbol}</i></div>`,
+                        iconSize: [30, 42],
+                        iconAnchor: [15, 42]
+                    });
+
+                    const marker = L.marker([m.lat, m.lng], { icon: icon });
+                    marker.on('click', (e) => {
+                        L.DomEvent.stopPropagation(e);
+                        // 始终调用 ref 中的最新函数
+                        if(onMarkerClickRef.current) onMarkerClickRef.current(m.id);
+                        mapRef.current.panTo([m.lat, m.lng]); 
+                    });
+                    marker.addTo(markersLayerRef.current);
+                });
+            }, [markers, selectedMarkerId]);
+
+            // 更新光标样式
+            useEffect(() => {
+                const el = document.getElementById('map-container');
+                if(el) {
+                    if (activeTool) el.classList.add('map-crosshair');
+                    else el.classList.remove('map-crosshair');
+                }
+            }, [activeTool]);
+
+            return <div id="map-container"></div>;
+        });
+
+        const App = () => {
+            const [markers, setMarkers] = useState([]);
+            const [activeTool, setActiveTool] = useState(null);
+            const [selectedMarkerId, setSelectedMarkerId] = useState(null);
+            const [showSidebar, setShowSidebar] = useState(true);
+            const [showStats, setShowStats] = useState(false);
+            const [isConnected, setIsConnected] = useState(false);
+            const [userName, setUserName] = useState('热心志愿者');
+            
+            const mapInstanceRef = useRef(null);
+            const fileInputRef = useRef(null);
+            const markerImageInputRef = useRef(null);
+
+            // Firebase Logic
+            useEffect(() => {
+                if (!isOfflineMode && auth) {
+                    auth.signInAnonymously().catch(e => console.error(e));
+                    auth.onAuthStateChanged(user => {
+                        setIsConnected(!!user);
+                        if (user) {
+                            db.collection('markers').onSnapshot(snap => {
+                                const loaded = snap.docs
+                                    .map(doc => ({ id: doc.id, ...doc.data() }))
+                                    .filter(m => m.lat && m.lng); 
+                                setMarkers(loaded);
+                            }, err => { if(err.code==='permission-denied') alert("🔴 权限不足"); });
+                        }
+                    });
+                } else {
+                    const saved = localStorage.getItem('offline_markers');
+                    if (saved) setMarkers(JSON.parse(saved).filter(m => m.lat && m.lng));
+                }
+            }, []);
+
+            const saveMarker = async (data) => {
+                const cleanData = JSON.parse(JSON.stringify(data));
+                if (!isOfflineMode && db && isConnected) {
+                    try { const ref = await db.collection('markers').add(cleanData); return ref.id; } 
+                    catch (e) { return null; }
+                } else {
+                    const newId = 'local_' + Date.now();
+                    const newMarkers = [...markers, { ...cleanData, id: newId }];
+                    setMarkers(newMarkers);
+                    localStorage.setItem('offline_markers', JSON.stringify(newMarkers));
+                    return newId;
+                }
+            };
+
+            const updateLocalMarker = async (id, updates) => {
+                const cleanUpdates = JSON.parse(JSON.stringify(updates));
+                if (!isOfflineMode && db && isConnected && !id.startsWith('local_')) {
+                     await db.collection('markers').doc(id).update(cleanUpdates);
+                } else {
+                    const newMarkers = markers.map(m => m.id === id ? { ...m, ...updates } : m);
+                    setMarkers(newMarkers);
+                    localStorage.setItem('offline_markers', JSON.stringify(newMarkers));
+                }
+            };
+
+            const deleteLocalMarker = async (id) => {
+                 if (!confirm("确定删除吗？")) return;
+                 if (!isOfflineMode && db && isConnected && !id.startsWith('local_')) {
+                     try { await db.collection('markers').doc(id).delete(); setSelectedMarkerId(null); } catch(e) { alert("删除失败"); }
+                } else {
+                    const newMarkers = markers.filter(m => m.id !== id);
+                    setMarkers(newMarkers);
+                    localStorage.setItem('offline_markers', JSON.stringify(newMarkers));
+                    setSelectedMarkerId(null);
+                }
+            };
+
+            const handleMapClick = async (latlng) => {
+                // 这里现在总能获取到最新的 activeTool 状态
+                if (!activeTool) {
+                    return; 
+                }
+                if (selectedMarkerId) { setSelectedMarkerId(null); return; }
+
+                const { lat, lng } = latlng;
+                const newData = {
+                    lat, lng, 
+                    type: activeTool, 
+                    description: '', 
+                    author: userName, 
+                    timestamp: Date.now(),
+                    category: activeTool === 'obstacle' ? 'other' : null,
+                    severity: activeTool === 'obstacle' ? 'medium' : null,
+                    rating: activeTool === 'experience' ? 3 : null,
+                    imageUrl: ''
+                };
+
+                const id = await saveMarker(newData);
+                if (id) {
+                    setActiveTool(null); 
+                    setSelectedMarkerId(id); 
+                }
+            };
+
+            const handleMarkerImageUpload = (e, id) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const r = new FileReader();
+                    r.onload = (ev) => updateLocalMarker(id, { imageUrl: ev.target.result });
+                    r.readAsDataURL(file);
+                }
+            };
+
+            const exportData = () => {
+                const str = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(markers, null, 2));
+                const a = document.createElement('a'); a.href = str; a.download = "川小桥调研数据.json"; a.click();
+            };
+
+            const handleSaveSnapshot = () => {
+                alert("正在生成截图，请稍候...");
+                document.querySelectorAll('.ui-layer').forEach(el => el.style.visibility = 'hidden');
+                
+                html2canvas(document.body, {
+                    useCORS: true,
+                    allowTaint: true,
+                    ignoreElements: (el) => el.classList.contains('modal-z')
+                }).then(canvas => {
+                    document.querySelectorAll('.ui-layer').forEach(el => el.style.visibility = 'visible');
+                    const link = document.createElement('a');
+                    link.download = `川小桥_快照_${Date.now()}.png`;
+                    link.href = canvas.toDataURL();
+                    link.click();
+                }).catch(err => {
+                    document.querySelectorAll('.ui-layer').forEach(el => el.style.visibility = 'visible');
+                    console.error(err);
+                    alert("截图失败，建议直接使用系统截屏。");
+                });
+            };
+
+            const flyToSchool = () => {
+                if (mapInstanceRef.current) mapInstanceRef.current.flyTo([30.556, 103.998], 16);
+            }
+
+            // UI Components
+            const renderDetailForm = () => {
+                const m = markers.find(mk => mk.id === selectedMarkerId);
+                if (!m) return null;
+                return (
+                    <div className="absolute top-4 right-4 w-80 bg-white rounded-xl shadow-2xl border border-slate-200 z-[2000] overflow-hidden flex flex-col max-h-[90vh] pointer-events-auto">
+                        <div className={`p-4 text-white flex justify-between items-center ${m.type === 'obstacle' ? 'bg-red-500' : m.type === 'facility' ? 'bg-green-500' : 'bg-blue-500'}`}>
+                            <span className="font-bold flex gap-2 items-center">详情编辑</span>
+                            <button onClick={() => setSelectedMarkerId(null)}><Icons.X size={18}/></button>
+                        </div>
+                        <div className="p-4 space-y-4 overflow-y-auto text-sm">
+                            <div className="text-xs text-slate-400">记录人: {m.author}</div>
+                            {m.type === 'obstacle' && (
+                                <div>
+                                    <label className="block font-bold mb-1">障碍类型</label>
+                                    <select value={m.category || 'other'} onChange={e => updateLocalMarker(m.id, {category: e.target.value})} className="w-full border rounded p-2 bg-slate-50">
+                                        {OBSTACLE_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                                    </select>
+                                </div>
+                            )}
+                            {m.type === 'experience' && (
+                                <div>
+                                    <label className="block font-bold mb-1">评分</label>
+                                    <div className="flex gap-1">
+                                        {[1,2,3,4,5].map(s => (
+                                            <button key={s} onClick={() => updateLocalMarker(m.id, {rating: s})} className={ (m.rating||0)>=s ? 'text-yellow-400' : 'text-slate-300'}>
+                                                <Icons.Star size={24} fill="currentColor"/>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                            <textarea value={m.description} onChange={e => updateLocalMarker(m.id, {description: e.target.value})} className="w-full border rounded p-2 h-20" placeholder="描述情况..."></textarea>
+                            <div className="border-t pt-3">
+                                <div className="flex justify-between items-center mb-2">
+                                    <span className="font-bold">照片</span>
+                                    <button onClick={() => markerImageInputRef.current.click()} className="text-blue-600 flex items-center gap-1"><Icons.Upload size={12}/>上传</button>
+                                    <input type="file" ref={markerImageInputRef} onChange={e => handleMarkerImageUpload(e, m.id)} className="hidden" accept="image/*"/>
+                                </div>
+                                {m.imageUrl ? (
+                                    <div className="relative h-32 bg-slate-100 rounded overflow-hidden group">
+                                        <img src={m.imageUrl} className="w-full h-full object-cover"/>
+                                        <button onClick={() => updateLocalMarker(m.id, {imageUrl: ''})} className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100"><Icons.X size={12}/></button>
+                                    </div>
+                                ) : <div className="h-32 bg-slate-50 border-dashed border-2 flex items-center justify-center text-slate-400 cursor-pointer" onClick={() => markerImageInputRef.current.click()}><Icons.Image size={24}/></div>}
+                            </div>
+                            <div className="border-t pt-3 flex justify-between">
+                                <button onClick={() => deleteLocalMarker(m.id)} className="text-red-500 hover:bg-red-50 p-2 rounded">删除</button>
+                                <button onClick={() => setSelectedMarkerId(null)} className="bg-slate-800 text-white px-3 py-1 rounded">完成</button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            const renderStatsModal = () => {
+                if (!showStats) return null;
+                const total = markers.length;
+                const obstacleCount = markers.filter(m => m.type === 'obstacle').length;
+                const facilityCount = markers.filter(m => m.type === 'facility').length;
+                return (
+                    <div className="fixed inset-0 z-[3000] bg-black/50 flex items-center justify-center p-4 pointer-events-auto">
+                        <div className="bg-white rounded-xl w-full max-w-lg p-6 relative">
+                            <button onClick={() => setShowStats(false)} className="absolute top-4 right-4"><Icons.X/></button>
+                            <h2 className="text-lg font-bold mb-4 flex gap-2"><Icons.BarChart2 className="text-blue-600"/> 数据统计</h2>
+                            <div className="grid grid-cols-3 gap-4 mb-6">
+                                <div className="bg-blue-50 p-3 rounded text-center"><div className="text-2xl font-bold text-blue-600">{total}</div><div className="text-xs">总标记</div></div>
+                                <div className="bg-red-50 p-3 rounded text-center"><div className="text-2xl font-bold text-red-600">{obstacleCount}</div><div className="text-xs">障碍</div></div>
+                                <div className="bg-green-50 p-3 rounded text-center"><div className="text-2xl font-bold text-green-600">{facilityCount}</div><div className="text-xs">设施</div></div>
+                            </div>
+                            <div className="text-center"><button onClick={exportData} className="text-blue-600 text-sm hover:underline">导出 JSON</button></div>
+                        </div>
+                    </div>
+                );
+            };
+
+            return (
+                <div className="flex flex-col md:flex-row h-screen bg-slate-50 text-slate-900 font-sans overflow-hidden relative">
+                    {/* 1. 地图层 (最底层) */}
+                    <MapView 
+                        markers={markers} 
+                        selectedMarkerId={selectedMarkerId} 
+                        activeTool={activeTool} 
+                        onMapClick={handleMapClick}
+                        onMarkerClick={setSelectedMarkerId}
+                        onMapReady={(map) => mapInstanceRef.current = map}
+                    />
+
+                    {/* 2. UI 层 (悬浮在地图之上) */}
+                    <div className="ui-layer flex h-full pointer-events-none">
+                        {/* 侧边栏 */}
+                        <div className={`${showSidebar?'w-80':'w-0'} bg-white border-r flex flex-col transition-all shadow-xl pointer-events-auto overflow-hidden`}>
+                            <div className="p-5 border-b">
+                                <h1 className="text-xl font-bold flex gap-2 text-slate-800"><span className="text-blue-600"><Icons.Navigation/></span> 川小桥 | 实时版</h1>
+                                <div className="mt-2 flex items-center gap-2 text-xs">
+                                    {isConnected ? <span className="text-green-600 flex gap-1"><Icons.Wifi size={14}/> 在线</span> : <span className="text-slate-400 flex gap-1"><Icons.WifiOff size={14}/> 离线</span>}
+                                    <input value={userName} onChange={e=>setUserName(e.target.value)} className="border-b w-20 bg-transparent outline-none" placeholder="昵称"/>
+                                </div>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                                <div className="space-y-2">
+                                    <button onClick={() => setActiveTool('obstacle')} className={`w-full flex gap-3 p-3 border rounded-lg transition-colors ${activeTool==='obstacle'?'bg-red-50 border-red-500 ring-2 ring-red-200':''}`}><div className="text-red-600 bg-red-100 p-2 rounded-full"><Icons.AlertTriangle/></div><div className="text-left"><div className="font-bold text-sm">障碍点</div><div className="text-xs text-slate-500">标记台阶/陡坡</div></div></button>
+                                    <button onClick={() => setActiveTool('facility')} className={`w-full flex gap-3 p-3 border rounded-lg transition-colors ${activeTool==='facility'?'bg-green-50 border-green-500 ring-2 ring-green-200':''}`}><div className="text-green-600 bg-green-100 p-2 rounded-full"><Icons.CheckCircle/></div><div className="text-left"><div className="font-bold text-sm">设施点</div><div className="text-xs text-slate-500">标记电梯/坡道</div></div></button>
+                                    <button onClick={() => setActiveTool('experience')} className={`w-full flex gap-3 p-3 border rounded-lg transition-colors ${activeTool==='experience'?'bg-blue-50 border-blue-500 ring-2 ring-blue-200':''}`}><div className="text-blue-600 bg-blue-100 p-2 rounded-full"><Icons.Users/></div><div className="text-left"><div className="font-bold text-sm">体验点</div><div className="text-xs text-slate-500">通过感受/建议</div></div></button>
+                                </div>
+                                <div className="text-xs text-slate-400 text-center pt-2">
+                                    <button onClick={flyToSchool} className="text-blue-500 hover:underline mt-1 flex items-center justify-center gap-1"><Icons.Navigation size={12}/> 回到江安校区</button>
+                                </div>
+                            </div>
+                            <div className="p-4 border-t flex gap-2 bg-slate-50">
+                                <button onClick={()=>setShowStats(true)} className="flex-1 flex-col flex items-center justify-center gap-1 bg-slate-100 py-2 rounded text-[10px] hover:bg-slate-200"><Icons.BarChart2 size={16}/>统计</button>
+                                <button onClick={exportData} className="flex-1 flex-col flex items-center justify-center gap-1 bg-slate-100 py-2 rounded text-[10px] hover:bg-slate-200"><Icons.Download size={16}/>数据</button>
+                                <button onClick={handleSaveSnapshot} className="flex-1 flex-col flex items-center justify-center gap-1 bg-slate-800 text-white py-2 rounded text-[10px] hover:bg-slate-700"><Icons.Camera size={16}/>存图</button>
+                            </div>
+                        </div>
+
+                        {/* 移动端菜单按钮 */}
+                        <div className="absolute top-4 left-4 pointer-events-auto md:hidden">
+                            <button onClick={() => setShowSidebar(!showSidebar)} className="bg-white p-2 rounded shadow hover:bg-gray-100 text-slate-600">菜单</button>
+                        </div>
+
+                        {/* 弹窗挂载点 */}
+                        {renderDetailForm()}
+                        {renderStatsModal()}
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
