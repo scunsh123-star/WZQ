@@ -2,97 +2,229 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>川小桥 | 无止 - 实时无障碍地图 (V21.3 稳定修复版)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="description" content="川小桥 | 无止 - 专业的校园无障碍环境监测与互助地图 - V21.10 旗舰交互版">
+    <meta name="theme-color" content="#3b82f6">
+    <title>川小桥 | 无止 - 旗舰交互版 (V21.10)</title>
     
-    <!-- 1. 基础库 -->
+    <!-- ==================================================================================
+         1. 核心依赖库 (CDN)
+         ================================================================================== -->
+    
+    <!-- 样式库: Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 核心框架: React 18 -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- 编译器: Babel (用于解析 JSX) -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- 2. Firebase -->
+    <!-- 后端服务: Firebase SDK (Compat版) -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
 
-    <!-- 3. Leaflet 地图 -->
+    <!-- 地图引擎: Leaflet -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     
-    <!-- 4. 截图库 -->
+    <!-- 工具库: html2canvas (截图) -->
     <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
 
+    <!-- ==================================================================================
+         2. 全局样式定义 (CSS)
+         ================================================================================== -->
     <style>
-        body, html, #root { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; font-family: system-ui, -apple-system, sans-serif; }
+        /* --- 基础重置与布局 --- */
+        body, html, #root { 
+            margin: 0; 
+            padding: 0; 
+            height: 100%; 
+            height: 100dvh; 
+            width: 100%; 
+            overflow: hidden; 
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; 
+            -webkit-tap-highlight-color: transparent; 
+            background-color: #f8fafc;
+            touch-action: manipulation; 
+        }
         
-        #map-container { position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 0; }
-        .ui-layer { position: relative; z-index: 10; pointer-events: none; height: 100%; width: 100%; }
+        #map-container { 
+            position: absolute; 
+            top: 0; 
+            left: 0; 
+            right: 0; 
+            bottom: 0; 
+            z-index: 0; 
+            background: #e2e8f0; 
+            transition: filter 0.3s ease;
+        }
+        
+        .ui-layer { 
+            position: absolute; 
+            inset: 0; 
+            z-index: 1000; 
+            pointer-events: none; 
+            overflow: hidden; 
+            display: flex; 
+            flex-direction: column; 
+        }
+        
         .pointer-events-auto { pointer-events: auto; }
+
+        /* --- 动画 --- */
+        @keyframes slideInLeft { from { transform: translateX(-100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes slideInUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes scaleIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+        @keyframes scan { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+        @keyframes gauge { from { width: 0%; } }
+
+        .anim-slide-left { animation: slideInLeft 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .anim-scale-in { animation: scaleIn 0.2s ease-out; }
+        .anim-slide-up { animation: slideInUp 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .anim-fade-in { animation: fadeIn 0.2s ease-out; }
+        .mic-active { animation: pulse-red 1.5s infinite; }
+        .gauge-anim { animation: gauge 1s ease-out forwards; }
+
+        /* --- 侧边栏 --- */
+        .sidebar-backdrop {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 1500;
+            opacity: 0; transition: opacity 0.3s; pointer-events: none; backdrop-filter: blur(2px);
+        }
+        .sidebar-backdrop.active { opacity: 1; pointer-events: auto; }
         
-        /* 标记样式 */
+        .sidebar-panel {
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s;
+            box-shadow: 4px 0 24px rgba(0,0,0,0.1);
+        }
+        
+        .toggle-sidebar-btn {
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .toggle-sidebar-btn:active { transform: scale(0.9); }
+
+        /* --- 底部面板 --- */
+        .bottom-sheet {
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            transform: translateY(105%);
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
+        }
+        .bottom-sheet.active { transform: translateY(0); }
+        .sheet-handle { width: 40px; height: 4px; background: #cbd5e1; border-radius: 2px; margin: 8px auto; }
+
+        /* --- 标记样式 --- */
         .custom-div-icon { background: transparent; border: none; }
         .marker-pin {
             width: 30px; height: 30px; border-radius: 50% 50% 50% 0; background: #3b82f6; position: absolute; transform: rotate(-45deg);
             left: 50%; top: 50%; margin: -15px 0 0 -15px;
-            box-shadow: 0 3px 5px rgba(0,0,0,0.3);
-            border: 2px solid #FFFFFF;
-            display: flex; align-items: center; justify-content: center;
-            transition: all 0.2s ease;
+            box-shadow: 0 3px 5px rgba(0,0,0,0.3); border: 2px solid #FFFFFF; display: flex; align-items: center; justify-content: center;
+            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
-        .marker-pin i { transform: rotate(45deg); font-style: normal; color: white; font-weight: bold; font-size: 14px; }
-        
-        /* 颜色定义 */
+        .marker-pin i { transform: rotate(45deg); font-style: normal; color: white; font-weight: 800; font-size: 14px; line-height: 1; }
         .marker-obstacle { background: #ef4444; }
         .marker-facility { background: #22c55e; }
         .marker-experience { background: #3b82f6; }
-        .marker-fixed { background: #64748b !important; border-color: #cbd5e1 !important; }
-
-        .marker-others { opacity: 0.6; filter: grayscale(30%); transform: rotate(-45deg) scale(0.9) !important; }
+        .marker-fixed { background: #64748b !important; border-color: #e2e8f0 !important; }
+        .marker-others { opacity: 0.7; filter: grayscale(20%); transform: rotate(-45deg) scale(0.9) !important; }
         .marker-mine { z-index: 800 !important; border-color: #fff; box-shadow: 0 4px 8px rgba(0,0,0,0.4); }
-
-        .marker-selected { transform: rotate(-45deg) scale(1.3) !important; border-color: #fbbf24 !important; z-index: 999 !important; opacity: 1 !important; filter: none !important; }
-        
+        .marker-selected { transform: rotate(-45deg) scale(1.4) !important; border-color: #fbbf24 !important; z-index: 999 !important; opacity: 1 !important; filter: none !important; box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.5); }
         .map-crosshair { cursor: crosshair !important; }
         
-        .toggle-checkbox:checked { right: 0; border-color: #3b82f6; }
-        .toggle-checkbox:checked + .toggle-label { background-color: #3b82f6; }
-        
-        @keyframes gauge { from { width: 0%; } }
-        .gauge-anim { animation: gauge 1s ease-out forwards; }
+        .route-tooltip { background: rgba(255,255,255,0.95); border: 1px solid #cbd5e1; box-shadow: 0 4px 6px rgba(0,0,0,0.1); font-weight: bold; font-size: 12px; color: #334155; border-radius: 6px; padding: 4px 8px; }
 
-        /* 加载动画 */
         .scanning-bar {
-            position: absolute; top: 0; left: 0; width: 100%; height: 4px; background: linear-gradient(90deg, transparent, #3b82f6, transparent);
+            position: absolute; top: 0; left: 0; width: 100%; height: 4px; 
+            background: linear-gradient(90deg, transparent, #3b82f6, transparent);
             animation: scan 1.5s infinite; z-index: 5000; display: none;
         }
         .scanning .scanning-bar { display: block; }
-        @keyframes scan { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+        .high-contrast { filter: contrast(130%); }
+        .high-contrast * { font-weight: 700 !important; letter-spacing: 0.02em; }
+        .high-contrast .bg-white { background-color: #000 !important; color: #fff !important; border: 1px solid #fff !important; }
+        .high-contrast .text-slate-600, .high-contrast .text-slate-500 { color: #e2e8f0 !important; }
+        .high-contrast .bg-slate-50, .high-contrast .bg-slate-100 { background-color: #1e293b !important; color: #fff !important; }
+        .high-contrast button { border: 2px solid #fff !important; }
+        .high-contrast input, .high-contrast textarea, .high-contrast select { background: #333 !important; color: #fff !important; border: 2px solid #fff !important; }
+
+        .fab-btn { transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+        .fab-btn:active { transform: scale(0.9); }
+        
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useRef, useMemo } = React;
+        const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
-        // ============================================================================
-        // ⚠️ 配置区域
-        // ============================================================================
+        // ----------------------------------------------------------------------------
+        // 1. 工具函数
+        // ----------------------------------------------------------------------------
+        const safeRender = (val) => {
+            if (val === null || val === undefined) return '';
+            if (typeof val === 'object') {
+                if (React.isValidElement(val)) return val;
+                return ""; 
+            }
+            return String(val);
+        };
+
+        // ----------------------------------------------------------------------------
+        // 2. 配置
+        // ----------------------------------------------------------------------------
         const FIREBASE_CONFIG = {
             apiKey: "AIzaSyCcBlaYfmLizo1E6mV87U6ytReqSuMTX5M",
-             authDomain: "scuwzq-9bcfb.firebaseapp.com",
-             projectId: "scuwzq-9bcfb",
-             storageBucket: "scuwzq-9bcfb.firebasestorage.app",
-             messagingSenderId: "1028374721634",
-             appId: "1:1028374721634:web:30714cb0acb6a951590d3b" 
+  authDomain: "scuwzq-9bcfb.firebaseapp.com",
+  projectId: "scuwzq-9bcfb",
+  storageBucket: "scuwzq-9bcfb.firebasestorage.app",
+  messagingSenderId: "1028374721634",
+  appId: "1:1028374721634:web:30714cb0acb6a951590d3b" 
         };
-        // ============================================================================
 
-        // --- AI API 配置 (用于分析功能) ---
-        const GEMINI_API_KEY = "";
+        const GEMINI_API_KEY = ""; 
         const AI_ENDPOINT_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 
+        const TILE_LAYERS = {
+            standard: { name: "标准地图", url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", attribution: '&copy; CARTO' },
+            satellite: { name: "卫星影像", url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", attribution: '&copy; Esri' },
+            simple: { name: "极简模式", url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", attribution: '&copy; CARTO' }
+        };
+
+        const OBSTACLE_CATEGORIES = [
+            { value: 'stairs', label: '🚧 台阶/高差' },
+            { value: 'slope', label: '📉 坡度过陡' },
+            { value: 'surface', label: '🕳️ 路面不平/坑洼' },
+            { value: 'width', label: '↔️ 通道过窄' },
+            { value: 'blocked', label: '🚫 盲道被占用' },
+            { value: 'other', label: '❓ 其他问题' },
+        ];
+
+        const MAP_ELEMENTS = {
+            buildings: { name: "建筑轮廓", layer: 'building', query: `way["building"]` },
+            roads: { name: "道路网络", layer: 'road', query: `way["highway"]` },
+            water: { name: "水系湖泊", layer: 'water', query: `relation["natural"="water"]; way["natural"="water"]` },
+            plants: { name: "绿地公园", layer: 'green', query: `way["leisure"="park"]; way["landuse"="grass"]` }
+        };
+
+        const INITIAL_LOCATIONS = [
+            { name: "江安校区", coords: [30.556, 103.998], type: 'point' },
+            { name: "望江校区", coords: [30.631, 104.085], type: 'point' },
+            { name: "华西校区", coords: [30.622, 104.068], type: 'point' }
+        ];
+
+        // ----------------------------------------------------------------------------
+        // 3. Firebase 初始化
+        // ----------------------------------------------------------------------------
         let db = null;
         let auth = null;
         let isOfflineMode = true;
@@ -102,364 +234,320 @@
                 if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
                 auth = firebase.auth();
                 db = firebase.firestore();
-                db.settings({ merge: true });
+                db.enablePersistence().catch(err => console.warn('Persistence disabled'));
                 isOfflineMode = false;
-                console.log("🔥 在线模式");
-            } catch (e) { console.error(e); }
+            } catch (e) { console.error("Firebase Init Error:", e); }
         }
 
+        // ----------------------------------------------------------------------------
+        // 4. 图标
+        // ----------------------------------------------------------------------------
         const Icons = {
-            Navigation: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>,
-            AlertTriangle: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>,
-            CheckCircle: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>,
-            Users: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
-            X: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>, 
-            Wifi: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>,
-            WifiOff: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.58 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>,
-            Download: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
-            Camera: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>,
-            BarChart2: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>,
-            PieChart: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>,
-            Activity: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>,
-            Star: ({size=24, fill="none"}) => <svg width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
-            Upload: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>,
-            Image: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>,
-            Layers: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>,
-            Eye: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>,
-            EyeOff: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>,
-            Trophy: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 21h8m-4-9v9m-6.7-6.27a4 4 0 1 1 0-7.73h13.4a4 4 0 1 1 0 7.73z"/></svg>,
-            User: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
-            MapPin: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>,
-            Search: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>,
-            Plus: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
-            Save: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>,
-            Edit2: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>,
-            Square: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>,
-            PenTool: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>,
-            Trash2: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>,
-            Target: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>,
-            Table: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2v-4M9 21H5a2 2 0 0 1-2-2v-4"/></svg>,
-            Zap: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
-            Road: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 21l8-17H3m14 0l-8 17h16"/></svg>,
-            Building: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><line x1="6" y1="17" x2="6" y2="10"/><line x1="10" y1="17" x2="10" y2="10"/><line x1="14" y1="17" x2="14" y2="10"/><line x1="18" y1="17" x2="18" y2="10"/></svg>,
-            Droplet: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2.69l5.66 5.66c1.15 1.15 1.15 3.02 0 4.17l-5.66 5.66c-1.15 1.15-3.02 1.15-4.17 0l-5.66-5.66c-1.15-1.15-1.15-3.02 0-4.17l5.66-5.66z"/></svg>,
-            TreePine: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7.74 15.68L2 21h20l-5.74-5.32c-1.15-1.15-3.02-1.15-4.17 0z"/><path d="M12 2v10m-3.5 3l3.5-3.5 3.5 3.5"/></svg>
+            Menu: ({size=24, className}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>,
+            X: ({size=24, className}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
+            Navigation: ({size=24, className}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>,
+            Search: ({size=24, className}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>,
+            Target: ({size=24, className}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>,
+            Plus: ({size=24, className}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
+            AlertTriangle: ({size=24, className}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>,
+            CheckCircle: ({size=24, className}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>,
+            Users: ({size=24, className}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
+            Mic: ({size=24, className}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>,
+            Camera: ({size=24, className}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>,
+            Upload: ({size=24, className}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>,
+            Image: ({size=24, className}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>,
+            Zap: ({size=24, className}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
+            ThumbsUp: ({size=24, className}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path></svg>,
+            Route: ({size=24, className}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="6" cy="19" r="3"></circle><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"></path><circle cx="18" cy="5" r="3"></circle></svg>,
+            Square: ({size=24, className}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>,
+            Layers: ({size=24, className}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>,
+            Eye: ({size=24, className}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>,
+            EyeOff: ({size=24, className}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>,
+            Moon: ({size=24, className}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>,
+            Activity: ({size=24, className}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>,
+            BarChart2: ({size=24, className}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>,
+            Download: ({size=24, className}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
+            Trophy: ({size=24, className}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 21h8m-4-9v9m-6.7-6.27a4 4 0 1 1 0-7.73h13.4a4 4 0 1 1 0 7.73z"/></svg>,
+            PieChart: ({size=24, className}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>,
+            User: ({size=24, className}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
+            MapPin: ({size=24, className}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>,
+            Building: ({size=24, className}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><line x1="6" y1="17" x2="6" y2="10"/><line x1="10" y1="17" x2="10" y2="10"/><line x1="14" y1="17" x2="14" y2="10"/><line x1="18" y1="17" x2="18" y2="10"/></svg>,
+            Droplet: ({size=24, className}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2.69l5.66 5.66c1.15 1.15 1.15 3.02 0 4.17l-5.66 5.66c-1.15 1.15-3.02 1.15-4.17 0l-5.66-5.66c-1.15-1.15-1.15-3.02 0-4.17l5.66-5.66z"/></svg>,
+            TreePine: ({size=24, className}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7.74 15.68L2 21h20l-5.74-5.32c-1.15-1.15-3.02-1.15-4.17 0z"/><path d="M12 2v10m-3.5 3l3.5-3.5 3.5 3.5"/></svg>,
+            Road: ({size=24, className}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 21l8-17H3m14 0l-8 17h16"/></svg>,
+            Minimize: ({size=24, className}) => <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
         };
 
-        const OBSTACLE_CATEGORIES = [
-            { value: 'stairs', label: '台阶/高差' },
-            { value: 'slope', label: '坡度过陡' },
-            { value: 'surface', label: '路面不平/坑洼' },
-            { value: 'width', label: '通道过窄' },
-            { value: 'blocked', label: '盲道被占用/阻断' },
-            { value: 'other', label: '其他问题' },
-        ];
-
-        const MAP_ELEMENTS = {
-            buildings: { name: "建筑", layer: 'building', url: 'https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png', icon: Icons.Building, query: `way["building"]` },
-            roads: { name: "道路", layer: 'road', url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png', icon: Icons.Road, query: `way["highway"]` },
-            water: { name: "水系", layer: 'water', url: 'https://{s}.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}{r}.png', icon: Icons.Droplet, query: `relation["natural"="water"]; way["natural"="water"]` },
-            plants: { name: "绿植", layer: 'green', url: 'https://{s}.basemaps.cartocdn.com/rastertiles/positron/{z}/{x}/{y}{r}.png', icon: Icons.TreePine, query: `way["leisure"="park"]; way["landuse"="grass"]` }
+        // ----------------------------------------------------------------------------
+        // 5. 工具组件
+        // ----------------------------------------------------------------------------
+        const vibrate = (pattern = 50) => {
+            if (navigator.vibrate) navigator.vibrate(pattern);
         };
-
-        const TILE_LAYERS = {
-            standard: { name: "标准", url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", attribution: '&copy; CARTO' },
-            satellite: { name: "卫星", url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", attribution: '&copy; Esri' },
-            simple: { name: "极简", url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", attribution: '&copy; CARTO' }
-        };
-
-        const INITIAL_LOCATIONS = [
-            { name: "江安校区", coords: [30.556, 103.998], type: 'point' },
-            { name: "干家沟村", coords: [30.365, 104.525], type: 'point' }
-        ];
 
         const generateRandomName = () => {
-            const adjs = ['热心', '神秘', '快乐', '勤劳', '专业', '闪电'];
-            const nouns = ['志愿者', '行者', '观察员', '测绘师', '小桥人'];
+            const adjs = ['热心', '神秘', '快乐', '勤劳', '专业', '闪电', '智慧'];
+            const nouns = ['行者', '观察员', '测绘师', '小桥人', '守护者', '向导'];
             return adjs[Math.floor(Math.random()*adjs.length)] + nouns[Math.floor(Math.random()*nouns.length)] + '_' + Math.floor(Math.random()*1000);
+        };
+
+        const Toast = ({ message, onClose }) => {
+            useEffect(() => {
+                if (message) {
+                    const timer = setTimeout(onClose, 3000);
+                    return () => clearTimeout(timer);
+                }
+            }, [message]);
+
+            if (!message) return null;
+            return (
+                <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800/90 text-white px-5 py-3 rounded-full text-sm font-bold shadow-xl z-[3000] flex items-center gap-2 anim-fade-in backdrop-blur-md border border-slate-700/50">
+                    <span>{safeRender(message)}</span>
+                </div>
+            );
         };
 
         const SafeTextarea = ({ initialValue, onSave, placeholder }) => {
             const textareaRef = useRef(null);
             const timerRef = useRef(null);
+            const [isListening, setIsListening] = useState(false);
 
             useEffect(() => {
-                if (textareaRef.current) {
-                    textareaRef.current.value = initialValue || '';
-                }
+                if (textareaRef.current) textareaRef.current.value = safeRender(initialValue);
             }, [initialValue]);
 
             const handleInput = (e) => {
                 const val = e.target.value;
-                
                 if (timerRef.current) clearTimeout(timerRef.current);
-                timerRef.current = setTimeout(() => {
-                    onSave(val);
-                }, 800);
+                timerRef.current = setTimeout(() => { onSave(val); }, 800);
+            };
+
+            const toggleSpeech = () => {
+                vibrate();
+                if (!('webkitSpeechRecognition' in window)) {
+                    alert("抱歉，您的浏览器不支持语音输入，请尝试使用 Chrome。");
+                    return;
+                }
+                if (isListening) return;
+
+                const recognition = new window.webkitSpeechRecognition();
+                recognition.lang = 'zh-CN';
+                recognition.continuous = false;
+                recognition.onstart = () => setIsListening(true);
+                recognition.onend = () => setIsListening(false);
+                recognition.onresult = (event) => {
+                    const text = event.results[0][0].transcript;
+                    const currentVal = textareaRef.current.value;
+                    const newVal = (currentVal ? currentVal + ' ' : '') + text;
+                    textareaRef.current.value = newVal;
+                    onSave(newVal);
+                };
+                recognition.start();
             };
 
             return (
-                <textarea 
-                    ref={textareaRef}
-                    defaultValue={initialValue}
-                    onInput={handleInput}
-                    className="w-full border rounded p-2 h-20 text-sm" 
-                    placeholder={placeholder}
-                />
+                <div className="relative group">
+                    <textarea 
+                        ref={textareaRef}
+                        defaultValue={safeRender(initialValue)}
+                        onInput={handleInput}
+                        className="w-full border-2 border-slate-200 rounded-xl p-3 h-28 text-sm pr-10 focus:ring-2 focus:ring-blue-400 focus:outline-none focus:border-blue-400 transition-all resize-none bg-slate-50 focus:bg-white" 
+                        placeholder={placeholder}
+                    />
+                    <button onClick={toggleSpeech} className={`absolute bottom-3 right-3 p-2 rounded-full transition-all shadow-sm ${isListening ? 'bg-red-500 text-white mic-active ring-2 ring-red-200' : 'bg-white text-slate-400 hover:text-blue-500 border border-slate-200'}`} title="点击开始语音输入"><Icons.Mic size={18}/></button>
+                </div>
             );
         };
 
-        // --- 地图组件 ---
-        const MapView = React.memo(({ markers, selectedMarkerId, activeTool, onMapClick, onMarkerClick, onMapReady, activeBaseLayer, visibleTypes, currentUserId, customRegions, drawingPoints, activeElementFilters, currentLocationName }) => {
+        // ----------------------------------------------------------------------------
+        // 6. MapView
+        // ----------------------------------------------------------------------------
+        const MapView = React.memo(({ 
+            markers, selectedMarkerId, activeTool, onMapClick, onMarkerClick, onMapReady, 
+            activeBaseLayer, visibleTypes, currentUserId, customRegions, drawingPoints, 
+            currentRoutePoints, customRoutes, currentLocationName, onRouteClick, activeElementFilters 
+        }) => {
             const mapRef = useRef(null);
             const markersLayerRef = useRef(null);
             const regionsLayerRef = useRef(null);
+            const routesLayerRef = useRef(null);
             const drawingLayerRef = useRef(null);
             const tileLayerRef = useRef(null);
             const elementLayerRef = useRef(null);
-            const onMapClickRef = useRef(onMapClick);
-            const onMarkerClickRef = useRef(onMarkerClick);
-
-            // 避免重复请求
-            const lastRequestBounds = useRef(null);
-
-            useEffect(() => {
-                onMapClickRef.current = onMapClick;
-                onMarkerClickRef.current = onMarkerClick;
-            }, [onMapClick, onMarkerClick]);
+            
+            const handlers = useRef({ onMapClick, onMarkerClick, onRouteClick });
+            useEffect(() => { handlers.current = { onMapClick, onMarkerClick, onRouteClick }; }, [onMapClick, onMarkerClick, onRouteClick]);
 
             useEffect(() => {
                 if (!mapRef.current) {
                     const map = L.map('map-container', { center: INITIAL_LOCATIONS[0].coords, zoom: 16, zoomControl: false, tap: false });
                     
-                    tileLayerRef.current = L.tileLayer(TILE_LAYERS[activeBaseLayer].url, { attribution: TILE_LAYERS[activeBaseLayer].attribution, maxZoom: 20 }).addTo(map);
-
-                    elementLayerRef.current = L.layerGroup().addTo(map); // 要素层在最下
+                    tileLayerRef.current = L.tileLayer(TILE_LAYERS[activeBaseLayer].url, { attribution: '', maxZoom: 20 }).addTo(map);
+                    
+                    elementLayerRef.current = L.layerGroup().addTo(map);
                     regionsLayerRef.current = L.layerGroup().addTo(map);
+                    routesLayerRef.current = L.layerGroup().addTo(map);
                     drawingLayerRef.current = L.layerGroup().addTo(map);
                     markersLayerRef.current = L.layerGroup().addTo(map);
                     
                     mapRef.current = map;
                     if(onMapReady) onMapReady(map);
-
-                    map.on('click', (e) => { if(onMapClickRef.current) onMapClickRef.current(e.latlng); });
                     
-                    // 监听地图移动，如果开启了要素筛选，则重新加载数据
-                    map.on('moveend', () => {
-                        // 这里可以触发重新加载，但为了简单起见，我们暂不实现自动重载，而是依赖筛选器切换
-                    });
+                    map.on('click', (e) => { if(handlers.current.onMapClick) handlers.current.onMapClick(e.latlng); });
                 }
             }, []);
 
-            // 监听底图切换
             useEffect(() => {
                 if (mapRef.current && tileLayerRef.current) {
                     mapRef.current.removeLayer(tileLayerRef.current);
-                    tileLayerRef.current = L.tileLayer(TILE_LAYERS[activeBaseLayer].url, { attribution: TILE_LAYERS[activeBaseLayer].attribution, maxZoom: 20 }).addTo(mapRef.current);
-                    // 确保顺序
-                    // if(elementLayerRef.current) elementLayerRef.current.bringToBack();
+                    tileLayerRef.current = L.tileLayer(TILE_LAYERS[activeBaseLayer].url, { attribution: '', maxZoom: 20 }).addTo(mapRef.current);
                 }
             }, [activeBaseLayer]);
 
-            // [核心] 加载矢量要素 (Overpass API)
             useEffect(() => {
                 if (!mapRef.current || !elementLayerRef.current) return;
-                
                 elementLayerRef.current.clearLayers();
-                document.body.classList.remove('scanning'); // 停止动画
+                document.body.classList.remove('scanning');
 
                 if (!activeElementFilters) return;
 
                 const config = MAP_ELEMENTS[activeElementFilters];
                 if (!config) return;
-
-                const zoom = mapRef.current.getZoom();
-                if (zoom < 14) {
-                    // 缩放太小不加载
-                    return;
-                }
+                if (mapRef.current.getZoom() < 14) return;
                 
-                document.body.classList.add('scanning'); // 开始动画
-
+                document.body.classList.add('scanning');
                 const bounds = mapRef.current.getBounds();
                 const bbox = `${bounds.getSouth()},${bounds.getWest()},${bounds.getNorth()},${bounds.getEast()}`;
-                
-                // 构建查询语句
-                const query = `
-                    [out:json][timeout:25];
-                    (
-                      ${config.query}(${bbox});
-                    );
-                    out geom;
-                `;
+                const query = `[out:json][timeout:15];(${config.query}(${bbox}););out geom;`;
 
-                const fetchOverpass = async () => {
-                    // 增加AbortController防止请求堆积
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10秒超时
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 8000); 
 
-                    try {
-                        const response = await fetch('https://overpass-api.de/api/interpreter', {
-                            method: 'POST',
-                            body: query,
-                            signal: controller.signal
-                        });
-                        
-                        if (!response.ok) throw new Error("Overpass API error");
-
-                        // [关键] 先转文本，防止非JSON响应导致崩溃
-                        const text = await response.text();
-                        let data;
-                        try {
-                            data = JSON.parse(text);
-                        } catch (jsonError) {
-                            console.error("Invalid JSON from Overpass:", text.substring(0, 100));
-                            throw new Error("Invalid JSON");
-                        }
-                        
+                fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: query, signal: controller.signal })
+                    .then(res => res.json())
+                    .then(data => {
                         if(data && data.elements) {
                             data.elements.forEach(el => {
                                 let layer;
                                 if (el.type === 'way' && el.geometry) {
                                     const latlngs = el.geometry.map(p => [p.lat, p.lon]);
-                                    // 根据是否有填充色决定画多边形还是线
-                                    if (config.style.fillColor) {
-                                        layer = L.polygon(latlngs, { ...config.style, stroke: false, interactive: false });
-                                    } else {
-                                        layer = L.polyline(latlngs, { ...config.style, interactive: false });
-                                    }
+                                    const style = { color: '#64748b', weight: 1, interactive: false };
+                                    if (activeElementFilters === 'water') style.color = '#3b82f6';
+                                    if (activeElementFilters === 'green') style.color = '#22c55e';
+                                    layer = L.polyline(latlngs, style);
                                 }
                                 if (layer) layer.addTo(elementLayerRef.current);
                             });
                         }
-                    } catch (e) {
-                        console.error("Overpass Fetch Error:", e);
-                    } finally {
-                        clearTimeout(timeoutId);
-                        document.body.classList.remove('scanning');
-                    }
-                };
+                    })
+                    .catch(e => console.log("Overpass Ignored", e))
+                    .finally(() => { clearTimeout(timeoutId); document.body.classList.remove('scanning'); });
+            }, [activeElementFilters]);
 
-                fetchOverpass();
-
-            }, [activeElementFilters]); // 仅在筛选器变化时加载，避免频繁请求
-
-            // 渲染区域
             useEffect(() => {
-                if (!regionsLayerRef.current) return;
-                regionsLayerRef.current.clearLayers();
-                
-                if(customRegions) {
-                    customRegions.forEach(region => {
-                        if(region.type === 'region' && region.points && region.points.length > 0) {
-                            const isSelected = region.name === currentLocationName;
-                            const polygon = L.polygon(region.points, { 
-                                color: isSelected ? '#f59e0b' : '#3b82f6', 
-                                weight: isSelected ? 4 : 2,
-                                fillOpacity: isSelected ? 0.2 : 0.05,
-                                dashArray: isSelected ? null : '5, 5'
-                            });
-                            polygon.bindTooltip(region.name, { permanent: true, direction: 'center', className: `region-tooltip ${isSelected ? 'font-bold text-yellow-600' : 'text-blue-500'}` });
-                            
-                            polygon.on('click', (e) => {
-                                L.DomEvent.stopPropagation(e);
-                                mapRef.current.fitBounds(polygon.getBounds());
-                            });
-                            polygon.addTo(regionsLayerRef.current);
+                if (!routesLayerRef.current) return;
+                routesLayerRef.current.clearLayers();
+                if (customRoutes) {
+                    customRoutes.forEach(route => {
+                        const color = route.type === 'safe' ? '#22c55e' : '#ef4444';
+                        const polyline = L.polyline(route.points, { color: color, weight: 6, opacity: 0.8, lineCap: 'round', lineJoin: 'round', className: 'cursor-pointer' });
+                        if(route.points.length > 1) {
+                            L.circleMarker(route.points[0], {radius: 4, color: color, fillColor: '#fff', fillOpacity: 1}).addTo(routesLayerRef.current);
+                            L.circleMarker(route.points[route.points.length-1], {radius: 4, color: color, fillColor: '#fff', fillOpacity: 1}).addTo(routesLayerRef.current);
                         }
+                        polyline.bindTooltip(route.type === 'safe' ? "推荐无障碍路线" : "存在高差/危险路段", { sticky: true, className: 'route-tooltip' });
+                        polyline.on('click', (e) => { L.DomEvent.stopPropagation(e); vibrate(); if(handlers.current.onRouteClick) handlers.current.onRouteClick(route); });
+                        polyline.addTo(routesLayerRef.current);
                     });
                 }
-            }, [customRegions, currentLocationName]);
+            }, [customRoutes]);
 
             useEffect(() => {
                 if (!drawingLayerRef.current) return;
                 drawingLayerRef.current.clearLayers();
-                if (drawingPoints && drawingPoints.length > 0) {
-                    L.polyline(drawingPoints, { color: '#ef4444', weight: 3, dashArray: '5, 10' }).addTo(drawingLayerRef.current);
-                    drawingPoints.forEach(pt => {
-                        L.circleMarker(pt, { radius: 4, color: '#ef4444', fillColor: '#fff', fillOpacity: 1 }).addTo(drawingLayerRef.current);
-                    });
-                    if (drawingPoints.length > 2) {
-                        L.polygon(drawingPoints, { color: '#ef4444', fillOpacity: 0.1, stroke: false }).addTo(drawingLayerRef.current);
-                    }
+                if (drawingPoints.length > 0) {
+                    L.polygon(drawingPoints, { color: '#3b82f6', weight: 2, dashArray: '5, 10', fillOpacity: 0.1 }).addTo(drawingLayerRef.current);
+                    drawingPoints.forEach(pt => L.circleMarker(pt, { radius: 4, color: '#3b82f6', fillColor: '#fff', fillOpacity: 1 }).addTo(drawingLayerRef.current));
                 }
-            }, [drawingPoints]);
+                if (currentRoutePoints.length > 0) {
+                     L.polyline(currentRoutePoints, { color: '#10b981', weight: 4, dashArray: '10, 10' }).addTo(drawingLayerRef.current);
+                     currentRoutePoints.forEach(pt => L.circleMarker(pt, { radius: 3, color: '#10b981', fillColor: '#fff' }).addTo(drawingLayerRef.current));
+                }
+            }, [drawingPoints, currentRoutePoints]);
 
             useEffect(() => {
                 if (!mapRef.current || !markersLayerRef.current) return;
                 markersLayerRef.current.clearLayers();
                 markers.forEach(m => {
-                    if (!m.lat || !m.lng) return;
-                    if (!visibleTypes[m.type]) return;
-
-                    let colorClass;
-                    if (m.status === 'fixed') {
-                        colorClass = 'marker-fixed';
-                    } else {
-                        colorClass = m.type === 'obstacle' ? 'marker-obstacle' : m.type === 'facility' ? 'marker-facility' : 'marker-experience';
-                    }
-
+                    if (!m.lat || !m.lng || !visibleTypes[m.type]) return;
+                    let colorClass = m.status === 'fixed' ? 'marker-fixed' : (m.type === 'obstacle' ? 'marker-obstacle' : m.type === 'facility' ? 'marker-facility' : 'marker-experience');
                     const symbol = m.type === 'obstacle' ? '!' : m.type === 'facility' ? '✓' : 'i';
-                    const isMine = m.userId === currentUserId; 
-                    const ownershipClass = isMine ? 'marker-mine' : 'marker-others';
+                    const ownershipClass = m.userId === currentUserId ? 'marker-mine' : 'marker-others';
                     const selectedClass = selectedMarkerId === m.id ? 'marker-selected' : '';
-
-                    const icon = L.divIcon({
-                        className: 'custom-div-icon',
-                        html: `<div class="marker-pin ${colorClass} ${ownershipClass} ${selectedClass}"><i>${symbol}</i></div>`,
-                        iconSize: [30, 42], iconAnchor: [15, 42]
-                    });
-                    const marker = L.marker([m.lat, m.lng], { icon: icon });
-                    marker.on('click', (e) => {
-                        L.DomEvent.stopPropagation(e);
-                        if(onMarkerClickRef.current) onMarkerClickRef.current(m.id);
-                        mapRef.current.panTo([m.lat, m.lng]); 
-                    });
+                    const html = `<div class="marker-pin ${colorClass} ${ownershipClass} ${selectedClass}"><i>${symbol}</i></div>`;
+                    const icon = L.divIcon({ className: 'custom-div-icon', html, iconSize: [30, 42], iconAnchor: [15, 42] });
+                    const marker = L.marker([m.lat, m.lng], { icon });
+                    marker.on('click', (e) => { L.DomEvent.stopPropagation(e); vibrate(); if(handlers.current.onMarkerClick) handlers.current.onMarkerClick(m.id); mapRef.current.panTo([m.lat, m.lng]); });
                     marker.addTo(markersLayerRef.current);
                 });
             }, [markers, selectedMarkerId, visibleTypes, currentUserId]);
 
             useEffect(() => {
                 const el = document.getElementById('map-container');
-                if(el) {
-                    if (activeTool) el.classList.add('map-crosshair'); else el.classList.remove('map-crosshair');
-                }
+                if(el) activeTool ? el.classList.add('map-crosshair') : el.classList.remove('map-crosshair');
             }, [activeTool]);
 
-            return (
-                <>
-                    <div id="map-container"></div>
-                    <div className={`scanning-bar ${activeElementFilters ? 'block' : 'hidden'}`}></div>
-                </>
-            );
+            return <div id="map-container"></div>;
         });
 
+        // ----------------------------------------------------------------------------
+        // 7. App
+        // ----------------------------------------------------------------------------
         const App = () => {
             const [markers, setMarkers] = useState([]);
             const [activeTool, setActiveTool] = useState(null);
             const [selectedMarkerId, setSelectedMarkerId] = useState(null);
-            const [showSidebar, setShowSidebar] = useState(true);
+            const [showSidebar, setShowSidebar] = useState(window.innerWidth > 768); 
             const [showStats, setShowStats] = useState(false);
+            const [showFABMenu, setShowFABMenu] = useState(false);
+            const [toastMsg, setToastMsg] = useState(null);
+            const [isHighContrast, setIsHighContrast] = useState(false);
             const [isConnected, setIsConnected] = useState(false);
             const [userName, setUserName] = useState('');
             const [currentUserId, setCurrentUserId] = useState('');
-            
             const [activeBaseLayer, setActiveBaseLayer] = useState('standard');
             const [visibleTypes, setVisibleTypes] = useState({ obstacle: true, facility: true, experience: true });
-            
+            const [activeElementFilters, setActiveElementFilters] = useState(null); 
             const [searchQuery, setSearchQuery] = useState('');
             const [customLocations, setCustomLocations] = useState(INITIAL_LOCATIONS);
             const [currentLocationName, setCurrentLocationName] = useState(INITIAL_LOCATIONS[0].name);
-            const [isEditingLocName, setIsEditingLocName] = useState(false);
-
-            const [drawingPoints, setDrawingPoints] = useState([]);
-
+            const [drawingPoints, setDrawingPoints] = useState([]); 
+            const [currentRoutePoints, setCurrentRoutePoints] = useState([]);
+            const [customRoutes, setCustomRoutes] = useState([]);
             const mapInstanceRef = useRef(null);
             const markerImageInputRef = useRef(null);
             const [aiAnalysisResult, setAiAnalysisResult] = useState(null);
             const [isAiAnalyzing, setIsAiAnalyzing] = useState(false);
-            
-            const [activeElementFilters, setActiveElementFilters] = useState(null); 
+
+            const safeParse = (key, fallback) => {
+                try {
+                    const item = localStorage.getItem(key);
+                    return item ? JSON.parse(item) : fallback;
+                } catch (e) { return fallback; }
+            };
+
+            // --- 核心修复：添加 toggleLayer 函数 ---
+            const toggleLayer = (type) => {
+                setVisibleTypes(prev => ({...prev, [type]: !prev[type]}));
+            };
+
+            // --- 核心修复：添加 toggleElementFilter 函数 ---
+            const toggleElementFilter = (key) => {
+                setActiveElementFilters(prev => (prev === key ? null : key));
+                if (key === 'buildings') setActiveBaseLayer('satellite');
+                else if (key === 'water') setActiveBaseLayer('simple');
+                else setActiveBaseLayer('standard');
+            };
 
             useEffect(() => {
                 let savedName = localStorage.getItem('user_nickname');
@@ -468,137 +556,120 @@
                 if (!savedName) { savedName = generateRandomName(); localStorage.setItem('user_nickname', savedName); }
                 setCurrentUserId(savedId);
                 setUserName(savedName);
-                
-                const savedLocs = localStorage.getItem('custom_locations');
-                if(savedLocs) setCustomLocations(JSON.parse(savedLocs));
+                setCustomLocations(safeParse('custom_locations', INITIAL_LOCATIONS));
+                setCustomRoutes(safeParse('custom_routes', []));
+                const handleResize = () => { if (window.innerWidth > 768 && !showSidebar) setShowSidebar(true); };
+                window.addEventListener('resize', handleResize);
+                return () => window.removeEventListener('resize', handleResize);
             }, []);
 
-            const handleNameChange = (e) => {
-                const newName = e.target.value;
-                setUserName(newName);
-                localStorage.setItem('user_nickname', newName);
-            };
+            useEffect(() => {
+                if (isHighContrast) document.body.classList.add('high-contrast');
+                else document.body.classList.remove('high-contrast');
+            }, [isHighContrast]);
 
             useEffect(() => {
                 if (!isOfflineMode && auth) {
-                    auth.signInAnonymously().catch(e => console.error(e));
+                    auth.signInAnonymously().catch(e => console.error("Auth Error", e));
                     auth.onAuthStateChanged(user => {
                         setIsConnected(!!user);
                         if (user) {
-                            db.collection('markers').onSnapshot(snap => {
+                            const unsubscribe = db.collection('markers').onSnapshot(snap => {
                                 const loaded = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(m => m.lat && m.lng); 
                                 setMarkers(loaded);
-                            }, err => { if(err.code==='permission-denied') alert("🔴 权限不足"); });
+                            }, err => console.error("Snapshot Error", err));
+                            return () => unsubscribe();
                         }
                     });
                 } else {
-                    const saved = localStorage.getItem('offline_markers');
-                    if (saved) setMarkers(JSON.parse(saved).filter(m => m.lat && m.lng));
+                    const saved = safeParse('offline_markers', []);
+                    setMarkers(saved.filter(m => m.lat && m.lng));
                 }
             }, []);
 
-            const updateLocalMarker = async (id, updates) => {
-                setMarkers(prev => prev.map(m => m.id === id ? { ...m, ...updates } : m));
-                if (!isOfflineMode && db && isConnected && !id.startsWith('local_')) {
-                     const cleanUpdates = JSON.parse(JSON.stringify(updates));
-                     db.collection('markers').doc(id).update(cleanUpdates).catch(e => console.error("同步失败", e));
-                } else {
-                    setTimeout(() => {
-                        const currentMarkers = JSON.parse(localStorage.getItem('offline_markers') || '[]');
-                        const newMarkers = currentMarkers.map(m => m.id === id ? { ...m, ...updates } : m);
-                        localStorage.setItem('offline_markers', JSON.stringify(newMarkers));
-                    }, 0);
-                }
-            };
+            const showToast = useCallback((msg) => setToastMsg(msg), []);
 
             const saveMarker = async (data) => {
+                vibrate();
                 const cleanData = JSON.parse(JSON.stringify(data));
                 const tempId = 'temp_' + Date.now();
-                const optimisticMarker = { ...cleanData, id: tempId };
-                setMarkers(prev => [...prev, optimisticMarker]);
-
+                setMarkers(prev => [...prev, { ...cleanData, id: tempId }]);
+                showToast("📍 标记已放置");
                 if (!isOfflineMode && db && isConnected) {
                     try { 
                         const ref = await db.collection('markers').add(cleanData); 
                         setMarkers(prev => prev.map(m => m.id === tempId ? { ...m, id: ref.id } : m));
                         if (selectedMarkerId === tempId) setSelectedMarkerId(ref.id);
                         return ref.id; 
-                    } 
-                    catch (e) { return null; }
+                    } catch (e) { console.error("Save Error", e); return null; }
                 } else {
                     const newId = 'local_' + Date.now();
-                    setMarkers(prev => prev.map(m => m.id === tempId ? { ...m, id: newId } : m));
-                    const currentSaved = JSON.parse(localStorage.getItem('offline_markers') || '[]');
-                    localStorage.setItem('offline_markers', JSON.stringify([...currentSaved, { ...cleanData, id: newId }]));
+                    const newMarker = { ...cleanData, id: newId };
+                    setMarkers(prev => prev.map(m => m.id === tempId ? newMarker : m));
+                    const currentSaved = safeParse('offline_markers', []);
+                    localStorage.setItem('offline_markers', JSON.stringify([...currentSaved, newMarker]));
                     return newId;
                 }
             };
 
+            const updateLocalMarker = async (id, updates) => {
+                setMarkers(prev => prev.map(m => m.id === id ? { ...m, ...updates } : m));
+                if (!isOfflineMode && db && isConnected && !id.startsWith('local_')) {
+                     db.collection('markers').doc(id).update(updates).catch(e => console.error(e));
+                } else {
+                    setTimeout(() => {
+                        const currentMarkers = safeParse('offline_markers', []);
+                        const newMarkers = currentMarkers.map(m => m.id === id ? { ...m, ...updates } : m);
+                        localStorage.setItem('offline_markers', JSON.stringify(newMarkers));
+                    }, 0);
+                }
+                if(updates.description || updates.votes) showToast("💾 已保存");
+            };
+
             const deleteLocalMarker = async (id) => {
-                 if (!confirm("确定删除吗？")) return;
+                 if (!confirm("确定删除？")) return;
                  setMarkers(prev => prev.filter(m => m.id !== id));
                  setSelectedMarkerId(null);
-
+                 showToast("🗑️ 已删除");
                  if (!isOfflineMode && db && isConnected && !id.startsWith('local_')) {
-                     db.collection('markers').doc(id).delete().catch(e => alert("删除失败"));
+                     db.collection('markers').doc(id).delete();
                 } else {
-                    const currentSaved = JSON.parse(localStorage.getItem('offline_markers') || '[]');
-                    const newSaved = currentSaved.filter(m => m.id !== id);
-                    localStorage.setItem('offline_markers', JSON.stringify(newSaved));
+                    const currentSaved = safeParse('offline_markers', []);
+                    localStorage.setItem('offline_markers', JSON.stringify(currentSaved.filter(m => m.id !== id)));
                 }
             };
 
+            const toggleVerification = (id) => {
+                vibrate();
+                const marker = markers.find(m => m.id === id);
+                if (!marker) return;
+                const newVotes = (marker.votes || 0) + 1;
+                updateLocalMarker(id, { votes: newVotes });
+                showToast("👍 已点赞验证");
+            };
+
             const handleMapClick = async (latlng) => {
-                if (activeTool === 'draw-region') {
-                    setDrawingPoints(prev => [...prev, [latlng.lat, latlng.lng]]);
-                    return;
+                if (activeTool === 'draw-region') { 
+                    setDrawingPoints(prev => [...prev, [latlng.lat, latlng.lng]]); vibrate(); return; 
                 }
-
-                if (!activeTool) return; 
-                if (selectedMarkerId) { setSelectedMarkerId(null); return; }
-
+                if (activeTool === 'draw-route') { 
+                    setCurrentRoutePoints(prev => [...prev, [latlng.lat, latlng.lng]]); vibrate(); return; 
+                }
+                if (!activeTool) {
+                    if (selectedMarkerId) setSelectedMarkerId(null); return; 
+                }
                 const { lat, lng } = latlng;
-                const newData = {
-                    lat, lng, type: activeTool, description: '', author: userName, userId: currentUserId, timestamp: Date.now(),
-                    category: activeTool === 'obstacle' ? 'other' : null,
-                    severity: activeTool === 'obstacle' ? 'medium' : null,
-                    rating: activeTool === 'experience' ? 3 : null,
-                    imageUrl: '',
-                    status: 'pending',
-                    aiResult: null
-                };
+                const newData = { lat, lng, type: activeTool, description: '', author: userName, userId: currentUserId, timestamp: Date.now(), category: activeTool === 'obstacle' ? 'other' : null, severity: activeTool === 'obstacle' ? 'medium' : null, votes: 0, imageUrl: '', status: 'pending', aiResult: null };
                 const id = await saveMarker(newData);
                 if (id) { setActiveTool(null); setSelectedMarkerId(id); }
             };
 
-            const finishDrawing = () => {
-                if (drawingPoints.length < 3) {
-                    alert("请至少选择 3 个点来构成一个区域");
-                    return;
-                }
-                const name = prompt("请输入区域名称 (如: 西园宿舍区):", "新区域");
-                if (name) {
-                    const newRegion = { name, type: 'region', points: drawingPoints };
-                    const newLocs = [...customLocations, newRegion];
-                    setCustomLocations(newLocs);
-                    localStorage.setItem('custom_locations', JSON.stringify(newLocs));
-                    if(mapInstanceRef.current) {
-                        const polygon = L.polygon(drawingPoints);
-                        mapInstanceRef.current.fitBounds(polygon.getBounds());
-                    }
-                    setCurrentLocationName(name);
-                }
-                setDrawingPoints([]);
-                setActiveTool(null);
-            };
-
-            const deleteLocation = (locName) => {
-                if(confirm(`确定要删除 "${locName}" 吗？`)) {
-                    const newLocs = customLocations.filter(l => l.name !== locName);
-                    setCustomLocations(newLocs);
-                    localStorage.setItem('custom_locations', JSON.stringify(newLocs));
-                    if(currentLocationName === locName) setCurrentLocationName("未选择");
-                }
+            const startAddTool = (tool) => {
+                vibrate();
+                setActiveTool(tool);
+                setShowFABMenu(false);
+                if(window.innerWidth < 768) setShowSidebar(false);
+                showToast(tool.startsWith('draw') ? "请在地图上绘点" : "请点击地图添加");
             };
 
             const handleMarkerImageUpload = (e, id) => {
@@ -611,286 +682,127 @@
             };
 
             const exportData = () => {
-                const headers = ["ID", "类型", "状态", "描述", "作者", "时间", "经度", "纬度", "AI分析结果"];
-                const rows = markers.map(m => [
-                    m.id,
-                    m.type === 'obstacle' ? '障碍' : m.type === 'facility' ? '设施' : '体验',
-                    m.status || 'pending',
-                    `"${(m.description || '').replace(/"/g, '""')}"`, 
-                    m.author,
-                    new Date(m.timestamp).toLocaleString(),
-                    m.lng,
-                    m.lat,
-                    `"${(m.aiResult || '').replace(/"/g, '""')}"`
-                ]);
+                const headers = ["ID", "Type", "Desc", "Coords", "AI", "Votes", "Author", "Time"];
+                const rows = markers.map(m => [ m.id, m.type, `"${(m.description||'').replace(/"/g,'""')}"`, `${m.lat},${m.lng}`, `"${(m.aiResult||'').replace(/"/g,'""')}"`, m.votes||0, m.author, new Date(m.timestamp).toLocaleString() ]);
                 const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
                 const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
                 const url = URL.createObjectURL(blob);
-                const a = document.createElement('a'); a.href = url; a.download = `川小桥调研数据_${new Date().toLocaleDateString()}.csv`; a.click();
+                const a = document.createElement('a'); a.href = url; a.download = `data_${Date.now()}.csv`; a.click();
             };
 
             const handleSaveSnapshot = () => {
-                alert("正在生成截图...");
-                const mapContainer = document.getElementById('map-container');
-                document.querySelectorAll('.ui-layer').forEach(el => el.style.visibility = 'hidden');
-                html2canvas(mapContainer, { useCORS: true, allowTaint: false, logging: false, width: mapContainer.offsetWidth, height: mapContainer.offsetHeight }).then(canvas => {
-                    document.querySelectorAll('.ui-layer').forEach(el => el.style.visibility = 'visible');
-                    const ctx = canvas.getContext('2d');
-                    markers.forEach(m => {
-                        if(!mapInstanceRef.current || !visibleTypes[m.type]) return;
-                        const point = mapInstanceRef.current.latLngToContainerPoint([m.lat, m.lng]);
-                        ctx.beginPath(); ctx.arc(point.x, point.y - 15, 15, 0, 2 * Math.PI);
-                        if (m.status === 'fixed') ctx.fillStyle = '#64748b';
-                        else ctx.fillStyle = m.type === 'obstacle' ? '#ef4444' : m.type === 'facility' ? '#22c55e' : '#3b82f6';
-                        ctx.fill(); ctx.strokeStyle = 'white'; ctx.lineWidth = 3; ctx.stroke();
-                        ctx.fillStyle = 'white'; ctx.font = 'bold 16px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-                        const symbol = m.type === 'obstacle' ? '!' : m.type === 'facility' ? '✓' : 'i';
-                        ctx.fillText(symbol, point.x, point.y - 15);
-                        ctx.beginPath(); ctx.moveTo(point.x - 10, point.y - 5); ctx.lineTo(point.x + 10, point.y - 5); ctx.lineTo(point.x, point.y + 10);
-                        if (m.status === 'fixed') ctx.fillStyle = '#64748b';
-                        else ctx.fillStyle = m.type === 'obstacle' ? '#ef4444' : m.type === 'facility' ? '#22c55e' : '#3b82f6'; ctx.fill();
-                    });
-                    const link = document.createElement('a'); link.download = `川小桥_快照_${Date.now()}.png`; link.href = canvas.toDataURL(); link.click();
+                showToast("生成截图中...");
+                const el = document.getElementById('map-container');
+                document.querySelectorAll('.ui-layer').forEach(e => e.style.visibility = 'hidden');
+                html2canvas(el, { useCORS: true, allowTaint: false, logging: false }).then(canvas => {
+                    document.querySelectorAll('.ui-layer').forEach(e => e.style.visibility = 'visible');
+                    const link = document.createElement('a'); link.download = `map_snapshot.png`; link.href = canvas.toDataURL(); link.click();
                 }).catch(err => {
-                    document.querySelectorAll('.ui-layer').forEach(el => el.style.visibility = 'visible');
+                    document.querySelectorAll('.ui-layer').forEach(e => e.style.visibility = 'visible');
                     alert("截图失败");
                 });
             };
 
-            const flyToSchool = () => { 
-                if (mapInstanceRef.current) {
-                    mapInstanceRef.current.flyTo(INITIAL_LOCATIONS[0].coords, 16); 
-                    setCurrentLocationName(INITIAL_LOCATIONS[0].name);
-                }
-            }
-            const toggleLayer = (type) => { setVisibleTypes(prev => ({...prev, [type]: !prev[type]})); };
-
-            const handleLocationChange = (location) => {
-                if (mapInstanceRef.current) {
-                    if(location.type === 'region') {
-                        const polygon = L.polygon(location.points);
-                        mapInstanceRef.current.fitBounds(polygon.getBounds());
-                    } else {
-                        mapInstanceRef.current.flyTo(location.coords, 16);
-                    }
-                    setCurrentLocationName(location.name);
-                }
-            };
-
-            const saveCurrentViewAsLocation = () => {
-                if(mapInstanceRef.current) {
-                    const center = mapInstanceRef.current.getCenter();
-                    const newLoc = { name: currentLocationName, coords: [center.lat, center.lng], type: 'point' };
-                    const exists = customLocations.find(l => l.name === currentLocationName);
-                    let newLocs;
-                    if(exists) {
-                        newLocs = customLocations.map(l => l.name === currentLocationName ? newLoc : l);
-                        alert(`已更新 "${currentLocationName}"`);
-                    } else {
-                        newLocs = [...customLocations, newLoc];
-                        alert(`已保存 "${currentLocationName}"`);
-                    }
-                    setCustomLocations(newLocs);
-                    localStorage.setItem('custom_locations', JSON.stringify(newLocs));
-                    setIsEditingLocName(false);
-                }
-            };
-
             const handleSearch = async () => {
                 if (!searchQuery.trim()) return;
+                showToast("搜索中...");
                 try {
-                    const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}`);
-                    const data = await response.json();
+                    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}`);
+                    const data = await res.json();
                     if (data && data.length > 0) {
-                        const { lat, lon, display_name } = data[0];
-                        if (mapInstanceRef.current) {
-                            mapInstanceRef.current.flyTo([lat, lon], 16);
-                            const simpleName = display_name.split(',')[0];
-                            setCurrentLocationName(simpleName); 
-                            setSearchQuery(''); 
-                        }
-                    } else { alert("未找到该地点"); }
+                        mapInstanceRef.current.flyTo([data[0].lat, data[0].lon], 16);
+                        setCurrentLocationName(data[0].display_name.split(',')[0]); 
+                        if(window.innerWidth < 768) setShowSidebar(false);
+                    } else { showToast("无结果"); }
                 } catch (e) { console.error(e); }
             };
 
             const handleLocateMe = () => {
+                vibrate();
                 if (mapInstanceRef.current) {
                     mapInstanceRef.current.locate({setView: true, maxZoom: 18});
+                    showToast("定位中...");
                 }
             };
             
             const analyzeMarker = async (marker) => {
-                if (!GEMINI_API_KEY || !AI_ENDPOINT_URL) {
-                    alert("请在代码中配置 API Key 和 Endpoint URL (支持 Gemini 或 Qwen)");
-                    return;
-                }
-
-                if (!marker.imageUrl) {
-                    alert("请先上传现场图片才能进行 AI 分析。");
-                    return;
-                }
-                
+                if (!GEMINI_API_KEY) { alert("需配置 API Key"); return; }
+                if (!marker.imageUrl) { alert("需上传图片"); return; }
                 setIsAiAnalyzing(true);
-                setAiAnalysisResult("正在进行多模态智能分析...");
-                
-                const promptText = `
-                    你是一个专业的无障碍环境评估师，请分析以下图片和文字描述，并给出专业的无障碍改造建议和风险评估。
-                    
-                    **用户描述**: ${marker.description}
-                    **障碍类型 (用户初判)**: ${marker.category || '未分类'}
-                    
-                    **请返回以下结构化的分析**:
-                    1. 障碍点位确认 (根据图片)：是/否是无障碍设施缺失？
-                    2. 严重程度分析 (1-5分): 5分为最高风险。
-                    3. 改造建议 (不超过100字): 针对这个点位，从建筑学角度提出可行性建议。
-                    4. 结论总结：一句概括。
-                `;
-
-                const base64Data = marker.imageUrl.split(',')[1];
-                const mimeType = marker.imageUrl.split(',')[0].split(':')[1].split(';')[0];
-                
-                const payload = {
-                    contents: [
-                        {
-                            parts: [
-                                { text: promptText },
-                                { inlineData: { mimeType: mimeType, data: base64Data } }
-                            ]
-                        }
-                    ],
-                };
-
+                setAiAnalysisResult("分析中...");
                 try {
-                    const url = `${AI_ENDPOINT_URL}?key=${GEMINI_API_KEY}`;
-                    const response = await fetch(url, {
+                    const res = await fetch(`${AI_ENDPOINT_URL}?key=${GEMINI_API_KEY}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
+                        body: JSON.stringify({ contents: [{ parts: [{ text: "分析无障碍设施问题" }, { inlineData: { mimeType: marker.imageUrl.split(';')[0].split(':')[1], data: marker.imageUrl.split(',')[1] } }] }] })
                     });
-
-                    if (!response.ok) {
-                        throw new Error(`API Error: ${response.status} ${response.statusText}`);
-                    }
-
-                    const result = await response.json();
-                    const aiText = result.candidates?.[0]?.content?.parts?.[0]?.text || "AI未返回有效内容，请检查API设置。";
-                    
+                    const result = await res.json();
+                    const aiText = result.candidates?.[0]?.content?.parts?.[0]?.text || "无结果";
                     setAiAnalysisResult(aiText);
                     updateLocalMarker(marker.id, { aiResult: aiText });
-                } catch (error) {
-                    console.error("AI Analysis Failed:", error);
-                    setAiAnalysisResult("AI分析失败。请检查API密钥、网络代理和配置URL是否正确。");
-                } finally {
-                    setIsAiAnalyzing(false);
-                }
+                } catch (error) { setAiAnalysisResult("分析失败"); } 
+                finally { setIsAiAnalyzing(false); }
             };
 
-            const toggleElementFilter = (key) => {
-                setActiveElementFilters(prev => (prev === key ? null : key));
-                
-                let newBaseKey = 'standard';
-                if (key === 'buildings') newBaseKey = 'satellite'; 
-                else if (key === 'roads') newBaseKey = 'standard'; 
-                else if (key === 'water') newBaseKey = 'simple';   
-                else if (key === 'plants') newBaseKey = 'standard'; 
-                
-                setActiveBaseLayer(newBaseKey);
+            const renderStatusPill = () => {
+                if (!activeTool) return null;
+                const texts = { obstacle: '添加障碍点', facility: '添加设施点', experience: '添加体验点', 'draw-route': '绘制路线', 'draw-region': '绘制区域' };
+                return (
+                    <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-[1100] flex items-center gap-3 bg-slate-900/90 backdrop-blur text-white px-5 py-2.5 rounded-full shadow-xl anim-slide-up pointer-events-auto border border-slate-700">
+                        <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+                        <span className="text-sm font-bold">{safeRender(texts[activeTool])}</span>
+                        <button onClick={() => setActiveTool(null)} className="ml-2 bg-white/20 rounded-full p-1"><Icons.X size={14}/></button>
+                    </div>
+                );
+            };
+
+            const renderFAB = () => {
+                if (activeTool) return null;
+                return (
+                    <div className="absolute bottom-8 right-5 flex flex-col items-end gap-4 z-[1100] pointer-events-auto">
+                        <div className={`flex flex-col gap-3 items-end transition-all duration-300 origin-bottom-right ${showFABMenu ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-50 translate-y-10 pointer-events-none'}`}>
+                            <button onClick={() => startAddTool('experience')} className="fab-btn flex items-center gap-3 bg-blue-500 text-white px-4 py-2.5 rounded-full shadow-lg"><span className="text-sm font-bold">体验点</span><div className="bg-white/20 p-1 rounded-full"><Icons.Users size={18}/></div></button>
+                            <button onClick={() => startAddTool('facility')} className="fab-btn flex items-center gap-3 bg-green-500 text-white px-4 py-2.5 rounded-full shadow-lg"><span className="text-sm font-bold">设施点</span><div className="bg-white/20 p-1 rounded-full"><Icons.CheckCircle size={18}/></div></button>
+                            <button onClick={() => startAddTool('obstacle')} className="fab-btn flex items-center gap-3 bg-red-500 text-white px-4 py-2.5 rounded-full shadow-lg"><span className="text-sm font-bold">障碍点</span><div className="bg-white/20 p-1 rounded-full"><Icons.AlertTriangle size={18}/></div></button>
+                        </div>
+                        <button onClick={() => { vibrate(); setShowFABMenu(!showFABMenu); }} className={`fab-btn w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 ${showFABMenu ? 'bg-slate-800 text-white rotate-45' : 'bg-blue-600 text-white'}`}><Icons.Plus size={28}/></button>
+                    </div>
+                );
             };
 
             const renderDetailForm = () => {
                 const m = markers.find(mk => mk.id === selectedMarkerId);
+                const isMobile = window.innerWidth < 768;
+                const containerClass = isMobile ? `fixed bottom-0 left-0 right-0 bg-white z-[2000] rounded-t-2xl bottom-sheet ${m ? 'active' : ''} max-h-[85dvh] flex flex-col` : `absolute top-4 right-4 w-96 bg-white rounded-xl shadow-2xl border border-slate-200 z-[2000] overflow-hidden flex flex-col max-h-[90vh] anim-scale-in ${m ? '' : 'hidden'}`;
                 if (!m) return null;
-                const isMine = m.userId === currentUserId;
+                const headerColor = m.status === 'fixed' ? 'bg-slate-500' : (m.type === 'obstacle' ? 'bg-red-500' : (m.type === 'facility' ? 'bg-green-500' : 'bg-blue-500'));
 
                 return (
-                    <div className="absolute top-4 right-4 w-80 bg-white rounded-xl shadow-2xl border border-slate-200 z-[2000] overflow-hidden flex flex-col max-h-[90vh] pointer-events-auto">
-                        <div className={`p-4 text-white flex justify-between items-center ${m.status === 'fixed' ? 'bg-slate-500' : (m.type === 'obstacle' ? 'bg-red-500' : m.type === 'facility' ? 'bg-green-500' : 'bg-blue-500')}`}>
-                            <span className="font-bold flex gap-2 items-center">详情编辑</span>
-                            <button onClick={() => setSelectedMarkerId(null)}><Icons.X size={18}/></button>
+                    <div className={`${containerClass} pointer-events-auto`}>
+                        {isMobile && <div className="sheet-handle"></div>}
+                        <div className={`p-4 text-white flex justify-between items-center shrink-0 ${isMobile ? 'rounded-t-xl' : ''} ${headerColor}`}>
+                            <span className="font-bold text-lg">详情编辑</span>
+                            <button onClick={() => setSelectedMarkerId(null)}><Icons.X size={20}/></button>
                         </div>
-                        <div className="p-4 space-y-4 overflow-y-auto text-sm">
-                            <div className="flex justify-between items-center">
-                                <span className="text-xs text-slate-400 flex items-center gap-1"><Icons.User size={12}/> {isMine ? '我' : m.author}</span>
-                                {!isMine && <span className="text-[10px] bg-gray-100 px-2 py-1 rounded text-gray-500">他人贡献</span>}
+                        <div className="p-5 space-y-5 overflow-y-auto text-sm flex-1 pb-10 bg-slate-50">
+                            <div className="flex justify-between items-center bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+                                <div className="flex items-center gap-2 text-slate-500"><Icons.User size={16}/> <span className="font-bold text-slate-700">{safeRender(m.userId === currentUserId ? '我' : m.author)}</span></div>
+                                <button onClick={() => toggleVerification(m.id)} className="flex items-center gap-1.5 text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg font-bold"><Icons.ThumbsUp size={14}/> 靠谱 ({safeRender(m.votes || 0)})</button>
                             </div>
-
-                            <div>
-                                <label className="block font-bold mb-1">当前状态</label>
-                                <select value={m.status || 'pending'} onChange={e => updateLocalMarker(m.id, {status: e.target.value})} className="w-full border rounded p-2 bg-slate-50">
-                                    <option value="pending">待处理</option>
-                                    <option value="in_progress">整改中</option>
-                                    <option value="fixed">已修复 (地图上变灰)</option>
-                                </select>
-                            </div>
-                            
+                            <div className="space-y-1"><label className="block font-bold text-slate-700 ml-1">状态</label><select value={m.status || 'pending'} onChange={e => updateLocalMarker(m.id, {status: e.target.value})} className="w-full border-2 border-slate-200 rounded-xl p-2.5 bg-white"><option value="pending">待处理</option><option value="in_progress">进行中</option><option value="fixed">已修复</option></select></div>
                             {m.type === 'obstacle' && (
-                                <div>
-                                    <label className="block font-bold mb-1">障碍类型</label>
-                                    <select value={m.category || 'other'} onChange={e => updateLocalMarker(m.id, {category: e.target.value})} className="w-full border rounded p-2 bg-slate-50">
-                                        {OBSTACLE_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-                                    </select>
-                                </div>
+                                <div className="space-y-1"><label className="block font-bold text-slate-700 ml-1">类型</label><div className="grid grid-cols-2 gap-2">{OBSTACLE_CATEGORIES.map(c => (<button key={c.value} onClick={() => updateLocalMarker(m.id, {category: c.value})} className={`text-xs py-2 px-2 rounded-lg border text-center transition-all ${m.category === c.value ? 'bg-red-50 border-red-500 text-red-700 font-bold' : 'bg-white border-slate-200 text-slate-600'}`}>{c.label}</button>))}</div></div>
                             )}
-                            {m.type === 'experience' && (
-                                <div>
-                                    <label className="block font-bold mb-1">评分</label>
-                                    <div className="flex gap-1">
-                                        {[1,2,3,4,5].map(s => (
-                                            <button key={s} onClick={() => updateLocalMarker(m.id, {rating: s})} className={ (m.rating||0)>=s ? 'text-yellow-400' : 'text-slate-300'}>
-                                                <Icons.Star size={24} fill="currentColor"/>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                            
-                            <SafeTextarea key={m.id} initialValue={m.description} onSave={(val) => updateLocalMarker(m.id, {description: val})} placeholder="请描述现场情况..."/>
-
-                            <div className="border-t pt-3">
-                                <div className="flex justify-between items-center mb-2">
-                                    <span className="font-bold">照片</span>
-                                    <button onClick={() => markerImageInputRef.current.click()} className="text-blue-600 flex items-center gap-1"><Icons.Upload size={12}/>上传</button>
-                                    <input type="file" ref={markerImageInputRef} onChange={e => handleMarkerImageUpload(e, m.id)} className="hidden" accept="image/*"/>
-                                </div>
-                                {m.imageUrl ? (
-                                    <div className="relative h-32 bg-slate-100 rounded overflow-hidden group">
-                                        <img src={m.imageUrl} className="w-full h-full object-cover"/>
-                                        <button onClick={() => updateLocalMarker(m.id, {imageUrl: ''})} className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100"><Icons.X size={12}/></button>
-                                    </div>
-                                ) : <div className="h-32 bg-slate-50 border-dashed border-2 flex items-center justify-center text-slate-400 cursor-pointer" onClick={() => markerImageInputRef.current.click()}><Icons.Image size={24}/></div>}
+                            <div className="space-y-1"><label className="block font-bold text-slate-700 ml-1">描述</label><SafeTextarea key={m.id} initialValue={m.description} onSave={(val) => updateLocalMarker(m.id, {description: val})} placeholder="描述情况..."/></div>
+                            <div className="space-y-1 border-t border-slate-200 pt-4">
+                                <div className="flex justify-between items-center mb-2"><span className="font-bold text-slate-700 ml-1">照片</span><button onClick={() => markerImageInputRef.current.click()} className="text-blue-600 text-xs font-bold flex items-center gap-1 bg-blue-50 px-3 py-1.5 rounded-lg"><Icons.Upload size={14}/> 上传</button><input type="file" ref={markerImageInputRef} onChange={e => handleMarkerImageUpload(e, m.id)} className="hidden" accept="image/*"/></div>
+                                {m.imageUrl ? <div className="relative h-40 bg-slate-200 rounded-xl overflow-hidden group border border-slate-200"><img src={m.imageUrl} className="w-full h-full object-cover"/><button onClick={() => updateLocalMarker(m.id, {imageUrl: ''})} className="absolute top-2 right-2 bg-black/50 text-white rounded-full p-1.5"><Icons.X size={14}/></button></div> : <div className="h-32 bg-white border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center justify-center text-slate-400" onClick={() => markerImageInputRef.current.click()}><Icons.Image size={32}/></div>}
                             </div>
-                            
-                            {/* AI 分析部分 */}
-                            <div className="border-t pt-3 space-y-2">
-                                <button 
-                                    onClick={() => analyzeMarker(m)}
-                                    disabled={isAiAnalyzing || !m.imageUrl}
-                                    className={`w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-colors ${isAiAnalyzing ? 'bg-gray-300 text-gray-600 cursor-not-allowed' : 'bg-green-500 text-white hover:bg-green-600 disabled:bg-gray-400'}`}
-                                >
-                                    {isAiAnalyzing ? (
-                                        <>
-                                            <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25"></circle><path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" className="opacity-75"></path></svg>
-                                            AI 正在分析...
-                                        </>
-                                    ) : (
-                                        <><Icons.Zap size={16}/> AI 智能分析</>
-                                    )}
-                                </button>
-                                
-                                {(m.aiResult || aiAnalysisResult) && (
-                                    <div className="bg-green-50 p-3 rounded-lg border border-green-200">
-                                        <h4 className="text-xs font-bold text-green-700 mb-1">AI 分析结果：</h4>
-                                        <p className="text-[10px] text-green-800 whitespace-pre-wrap">
-                                            {m.aiResult || aiAnalysisResult}
-                                        </p>
-                                    </div>
-                                )}
+                            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-4 rounded-xl border border-blue-100 space-y-3">
+                                <button onClick={() => analyzeMarker(m)} disabled={isAiAnalyzing || !m.imageUrl} className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold ${isAiAnalyzing ? 'bg-slate-200 text-slate-500' : 'bg-indigo-600 text-white'}`}>{isAiAnalyzing ? '分析中...' : <><Icons.Zap size={18}/> AI 分析</>}</button>
+                                {(m.aiResult || aiAnalysisResult) && <div className="bg-white/80 p-3 rounded-lg border border-indigo-100 text-xs text-indigo-900 leading-relaxed backdrop-blur-sm">{safeRender(m.aiResult || aiAnalysisResult)}</div>}
                             </div>
-                            {/* 底部按钮 */}
-                            <div className="border-t pt-3 flex justify-between">
-                                <button onClick={() => deleteLocalMarker(m.id)} className="text-red-500 hover:bg-red-50 p-2 rounded">删除</button>
-                                <button onClick={() => setSelectedMarkerId(null)} className="bg-slate-800 text-white px-3 py-1 rounded">完成</button>
-                            </div>
+                            <div className="pt-4 flex justify-between items-center"><button onClick={() => deleteLocalMarker(m.id)} className="text-red-500 hover:bg-red-50 px-4 py-2 rounded-lg text-xs font-bold">删除</button><button onClick={() => {setSelectedMarkerId(null); showToast("已完成");}} className="bg-slate-800 text-white px-6 py-2.5 rounded-xl font-bold">完成</button></div>
                         </div>
                     </div>
                 );
@@ -901,204 +813,113 @@
                 const total = markers.length;
                 const obstacleCount = markers.filter(m => m.type === 'obstacle').length;
                 const facilityCount = markers.filter(m => m.type === 'facility').length;
-                const highSeverityCount = markers.filter(m => m.type === 'obstacle' && m.severity === 'high').length;
-                let healthScore = 60 + (facilityCount * 5) - (obstacleCount * 2) - (highSeverityCount * 5);
-                healthScore = Math.max(0, Math.min(100, healthScore));
+                const healthScore = Math.max(0, Math.min(100, Math.round(60 + (facilityCount * 2) - (obstacleCount * 1.5))));
                 const contributorMap = {};
                 markers.forEach(m => { const name = m.author || '匿名'; contributorMap[name] = (contributorMap[name] || 0) + 1; });
                 const leaderboard = Object.entries(contributorMap).sort((a, b) => b[1] - a[1]).slice(0, 3);
 
                 return (
-                    <div className="fixed inset-0 z-[3000] bg-black/50 flex items-center justify-center p-4 pointer-events-auto">
-                        <div className="bg-white rounded-xl w-full max-w-2xl p-6 relative flex flex-col max-h-[90vh]">
-                            <button onClick={() => setShowStats(false)} className="absolute top-4 right-4"><Icons.X/></button>
-                            <h2 className="text-xl font-bold mb-6 flex gap-2 items-center text-slate-800"><Icons.BarChart2 className="text-blue-600"/> 校园数据洞察</h2>
-                            <div className="overflow-y-auto space-y-6 pr-2">
+                    <div className="fixed inset-0 z-[3000] bg-black/60 flex items-center justify-center p-4 pointer-events-auto backdrop-blur-sm anim-fade-in">
+                        <div className="bg-white rounded-2xl w-full max-w-2xl p-6 relative flex flex-col max-h-[90dvh] shadow-2xl anim-scale-in overflow-hidden">
+                            <button onClick={() => setShowStats(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 bg-slate-100 p-1 rounded-full"><Icons.X size={20}/></button>
+                            <div className="pb-4 border-b border-slate-100 mb-4"><h2 className="text-xl font-bold flex gap-2 items-center text-slate-800"><Icons.BarChart2 className="text-blue-600"/> 数据洞察</h2></div>
+                            <div className="overflow-y-auto space-y-6 pr-2 flex-1 pb-4">
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    <div className="bg-blue-50 p-5 rounded-2xl border border-blue-100 flex flex-col items-center justify-center relative">
-                                        <div className="text-sm text-blue-500 font-bold mb-1">无障碍健康指数</div>
-                                        <div className="text-5xl font-black text-blue-700 z-10">{healthScore}</div>
-                                        <div className="w-full bg-gray-200 h-2 rounded-full mt-3"><div className="h-full bg-blue-500 gauge-anim" style={{width: `${healthScore}%`}}></div></div>
-                                    </div>
-                                    <div className="bg-red-50 p-5 rounded-2xl border border-red-100">
-                                        <div className="flex justify-between mb-4"><span className="text-sm font-bold text-red-600 flex gap-1"><Icons.AlertTriangle size={16}/> 严重预警</span><span className="text-2xl font-black text-red-600">{highSeverityCount}</span></div>
-                                        <div className="text-xs text-red-800">严重障碍占比: {obstacleCount>0?((highSeverityCount/obstacleCount)*100).toFixed(0):0}%</div>
-                                    </div>
-                                    <div className="bg-yellow-50 p-5 rounded-2xl border border-yellow-100">
-                                        <div className="text-sm font-bold text-yellow-700 mb-3 flex items-center gap-1"><Icons.Trophy size={16}/> 贡献榜</div>
-                                        <div className="space-y-2">
-                                            {leaderboard.map((u, i) => (
-                                                <div key={u[0]} className="flex justify-between text-xs bg-white/50 p-2 rounded">
-                                                    <div className="flex gap-2"><span className={`w-4 h-4 rounded-full flex justify-center text-[10px] font-bold ${i===0?'bg-yellow-400 text-white':'bg-gray-300 text-white'}`}>{i+1}</span><span className="truncate max-w-[80px]">{u[0]}</span></div>
-                                                    <span className="font-bold text-yellow-600">{u[1]}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
+                                    <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-5 rounded-2xl border border-blue-100 flex flex-col items-center justify-center relative overflow-hidden"><div className="text-xs text-blue-500 font-bold mb-1 uppercase">健康指数</div><div className="text-6xl font-black text-blue-600 z-10">{safeRender(healthScore)}</div><Icons.Activity size={100} className="absolute -bottom-4 -right-4 text-blue-100 opacity-50"/></div>
+                                    <div className="bg-red-50 p-5 rounded-2xl border border-red-100 flex flex-col justify-between"><div><div className="text-xs font-bold text-red-500 uppercase">障碍数</div><div className="text-3xl font-black text-red-600 mt-1">{safeRender(obstacleCount)}</div></div><div className="bg-white p-2 rounded-full text-red-500 shadow-sm w-fit"><Icons.AlertTriangle size={20}/></div></div>
+                                    <div className="bg-yellow-50 p-5 rounded-2xl border border-yellow-100 overflow-hidden relative"><div className="text-xs font-bold text-yellow-600 uppercase mb-3">光荣榜</div><div className="space-y-2 relative z-10">{leaderboard.map((u, i) => (<div key={u[0]} className="flex justify-between text-xs bg-white/60 p-2 rounded-lg"><span className="font-bold text-slate-700">{safeRender(u[0])}</span><span className="font-bold text-yellow-700">{safeRender(u[1])}</span></div>))}</div></div>
                                 </div>
-                                
-                                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                                    <h3 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2"><Icons.PieChart size={16}/> 障碍类型分布</h3>
-                                    <div className="space-y-3">
-                                        {OBSTACLE_CATEGORIES.map(cat => {
-                                            const count = markers.filter(m => m.type === 'obstacle' && m.category === cat.value).length;
-                                            const percent = obstacleCount > 0 ? (count / obstacleCount) * 100 : 0;
-                                            return (
-                                                <div key={cat.value}>
-                                                    <div className="flex justify-between text-xs mb-1"><span>{cat.label}</span><span className="text-slate-400">{count}处</span></div>
-                                                    <div className="w-full bg-slate-200 h-1.5 rounded-full"><div className="bg-blue-500 h-1.5 rounded-full transition-all duration-500" style={{width: `${percent}%`}}></div></div>
-                                                </div>
-                                            )
-                                        })}
-                                    </div>
-                                </div>
-                                
-                                <div className="grid grid-cols-3 gap-4">
-                                    <div className="bg-blue-50 p-3 rounded text-center"><div className="text-xl font-bold text-blue-600">{total}</div><div className="text-xs text-blue-400">总标记</div></div>
-                                    <div className="bg-green-50 p-3 rounded text-center"><div className="text-xl font-bold text-green-600">{facilityCount}</div><div className="text-xs text-green-400">设施</div></div>
-                                    <div className="bg-red-50 p-3 rounded text-center"><div className="text-xl font-bold text-red-600">{obstacleCount}</div><div className="text-xs text-red-400">障碍</div></div>
-                                </div>
+                                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><h3 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2"><Icons.PieChart size={16}/> 类型分布</h3><div className="space-y-4">{OBSTACLE_CATEGORIES.map(cat => { const count = markers.filter(m => m.type === 'obstacle' && m.category === cat.value).length; if (count === 0) return null; return (<div key={cat.value}><div className="flex justify-between text-xs mb-1.5 font-medium text-slate-600"><span>{cat.label}</span><span>{count}</span></div><div className="w-full bg-slate-100 h-2 rounded-full"><div className="bg-blue-500 h-full rounded-full" style={{width: `${(count/obstacleCount)*100}%`}}></div></div></div>) })}</div></div>
                             </div>
-                            <div className="text-center mt-4"><button onClick={exportData} className="text-blue-600 text-sm hover:underline">导出数据</button></div>
+                            <div className="p-4 border-t border-slate-200 bg-slate-50/80 backdrop-blur-sm"><div className="flex gap-3"><button onClick={()=>{setShowStats(true); if(window.innerWidth<768) setShowSidebar(false);}} className="flex-1 bg-white border border-slate-200 py-3 rounded-xl text-xs text-slate-600 flex flex-col items-center justify-center gap-1"><Icons.BarChart2 size={20} className="text-blue-500"/><span className="font-bold">统计</span></button><button onClick={exportData} className="flex-1 bg-white border py-3 rounded-xl text-xs text-slate-600 flex flex-col items-center justify-center gap-1"><Icons.Download size={20} className="text-green-500"/><span className="font-bold">数据</span></button><button onClick={handleSaveSnapshot} className="flex-1 bg-slate-800 text-white py-3 rounded-xl text-xs flex flex-col items-center justify-center gap-1"><Icons.Camera size={20}/><span className="font-bold">存图</span></button></div></div>
                         </div>
                     </div>
                 );
             };
 
             return (
-                <div className="flex flex-col md:flex-row h-screen bg-slate-50 text-slate-900 font-sans overflow-hidden relative">
-                    <MapView 
-                        markers={markers} selectedMarkerId={selectedMarkerId} activeTool={activeTool} onMapClick={handleMapClick} onMarkerClick={setSelectedMarkerId} onMapReady={(map) => mapInstanceRef.current = map}
-                        activeBaseLayer={activeBaseLayer} visibleTypes={visibleTypes} currentUserId={currentUserId} customRegions={customLocations} drawingPoints={drawingPoints} activeElementFilters={activeElementFilters} currentLocationName={currentLocationName}
-                    />
-                    <div className="ui-layer flex h-full pointer-events-none">
-                        <div className={`${showSidebar?'w-80':'w-0'} bg-white border-r flex flex-col transition-all shadow-xl pointer-events-auto overflow-hidden`}>
-                            <div className="p-5 border-b">
-                                <h1 className="text-xl font-bold flex gap-2 text-slate-800"><span className="text-blue-600"><Icons.Navigation/></span> 川小桥 | 实时版</h1>
-                                <div className="mt-2 flex items-center gap-2 text-xs">
-                                    {isConnected ? <span className="text-green-600 flex gap-1"><Icons.Wifi size={14}/> 在线</span> : <span className="text-slate-400 flex gap-1"><Icons.WifiOff size={14}/> 离线</span>}
-                                    <input value={userName} onChange={handleNameChange} className="border-b w-24 bg-transparent outline-none font-bold text-slate-700" placeholder="你的昵称"/>
-                                </div>
+                <div className="flex h-full w-full bg-slate-50 text-slate-900 font-sans overflow-hidden relative select-none">
+                    <MapView markers={markers} selectedMarkerId={selectedMarkerId} activeTool={activeTool} onMapClick={handleMapClick} onMarkerClick={setSelectedMarkerId} onMapReady={(map) => mapInstanceRef.current = map} activeBaseLayer={activeBaseLayer} visibleTypes={visibleTypes} currentUserId={currentUserId} customRegions={customLocations} drawingPoints={drawingPoints} currentRoutePoints={currentRoutePoints} customRoutes={customRoutes} activeElementFilters={activeElementFilters} currentLocationName={currentLocationName} onRouteClick={(r) => {if(confirm("确定要删除这条路线吗？")) setCustomRoutes(prev => prev.filter(pr => pr !== r));}} />
+                    
+                    <div className="ui-layer">
+                        <div className="scanning-bar"></div>
+                        
+                        {!showSidebar && (
+                            <div className="absolute top-4 left-4 pointer-events-auto z-[1100] anim-scale-in">
+                                <button 
+                                    onClick={() => {vibrate(); setShowSidebar(true);}} 
+                                    className="toggle-sidebar-btn bg-white w-12 h-12 rounded-full shadow-lg flex items-center justify-center border-2 border-blue-500 text-blue-600 hover:bg-blue-50 active:bg-blue-100 transition-all"
+                                    title="打开菜单"
+                                >
+                                    <Icons.Target size={24} />
+                                </button>
                             </div>
-                            <div className="flex-1 overflow-y-auto p-4 space-y-6">
+                        )}
+
+                        <div className="absolute bottom-8 left-4 pointer-events-auto z-[1100]">
+                            <button onClick={handleLocateMe} className="bg-white p-3.5 rounded-full shadow-xl text-blue-600 border border-slate-100 active:bg-blue-50 transition active:scale-95 group">
+                                <Icons.Target size={24} className="group-active:rotate-12 transition-transform"/>
+                            </button>
+                        </div>
+
+                        {renderStatusPill()}
+                        {renderFAB()}
+                        {renderDetailForm()}
+                        <Toast message={toastMsg} onClose={() => setToastMsg(null)}/>
+                        {renderStatsModal()}
+
+                        <div className={`sidebar-backdrop ${showSidebar ? 'active' : ''} md:hidden`} onClick={() => setShowSidebar(false)}></div>
+
+                        <div className={`sidebar-panel absolute top-0 left-0 h-full bg-white/95 backdrop-blur-md border-r border-slate-200 flex flex-col shadow-2xl pointer-events-auto z-[1200] w-80 max-w-[85vw] transform ${showSidebar ? 'translate-x-0' : '-translate-x-full'}`}>
+                            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                                 <div>
-                                    <h3 className="text-xs font-bold text-slate-400 uppercase mb-2">调研点位管理</h3>
-                                    <div className="flex flex-col gap-2">
-                                        <div className="flex flex-wrap gap-2 bg-slate-100 p-2 rounded-lg">
-                                            {customLocations.map(loc => (
-                                                <div key={loc.name} className="relative group">
-                                                    <button 
-                                                        onClick={() => handleLocationChange(loc)}
-                                                        className={`px-2 py-1 text-xs rounded-md transition-all border pr-4 ${currentLocationName === loc.name ? 'bg-white border-blue-300 text-blue-600 font-bold shadow-sm' : 'bg-transparent border-transparent text-slate-500 hover:bg-white/50'}`}
-                                                    >
-                                                        {loc.name}
-                                                    </button>
-                                                    <button 
-                                                        onClick={(e) => { e.stopPropagation(); deleteLocation(loc.name); }}
-                                                        className="absolute top-0 right-0 p-0.5 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                    >
-                                                        <Icons.X size={10}/>
-                                                    </button>
-                                                </div>
-                                            ))}
-                                        </div>
-                                        
-                                        <button onClick={handleLocateMe} className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-all text-xs font-bold shadow-md">
-                                            <Icons.Target size={16}/> 定位到我的位置
+                                    <h1 className="text-xl font-black flex gap-2 text-slate-800 items-center tracking-tight">
+                                        <span className="text-blue-600"><Icons.Navigation size={24}/></span> 川小桥
+                                        <span className="text-[10px] px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded-md font-bold tracking-wider">V21.10</span>
+                                    </h1>
+                                    <div className="mt-2 flex items-center gap-2 text-xs">
+                                        <input value={userName} onChange={e => {setUserName(e.target.value); localStorage.setItem('user_nickname', e.target.value);}} className="border-b border-slate-300 w-20 bg-transparent outline-none font-bold text-slate-700 focus:border-blue-500 transition-colors" placeholder="昵称"/>
+                                        <div className="h-3 w-px bg-slate-300"></div>
+                                        <button onClick={() => setIsHighContrast(!isHighContrast)} className={`flex items-center gap-1 p-1 rounded transition-colors ${isHighContrast ? 'text-blue-600 font-bold bg-blue-50' : 'text-slate-400 hover:text-slate-600'}`}>
+                                            <Icons.Moon size={12}/> {isHighContrast ? '关' : '模式'}
                                         </button>
-
-                                        <div className="flex items-center gap-2 bg-white border rounded-md px-2 py-1 mt-1">
-                                            <Icons.Search size={14} className="text-slate-400"/>
-                                            <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} className="w-full text-xs outline-none bg-transparent" placeholder="搜地点..."/>
-                                            <button onClick={handleSearch} className="text-blue-500 text-xs whitespace-nowrap hover:underline">前往</button>
-                                        </div>
-                                        <div className="flex items-center justify-between mt-2 border-t pt-2">
-                                            <div className="flex items-center gap-1 overflow-hidden">
-                                                <Icons.MapPin size={14} className="text-blue-500 shrink-0"/>
-                                                {isEditingLocName ? (
-                                                    <input value={currentLocationName} onChange={(e) => setCurrentLocationName(e.target.value)} onBlur={saveCurrentViewAsLocation} onKeyDown={(e) => e.key === 'Enter' && saveCurrentViewAsLocation()} className="text-xs border-b border-blue-300 outline-none bg-transparent w-full" autoFocus/>
-                                                ) : <span className="text-xs font-bold text-slate-700 truncate cursor-pointer" onClick={() => setIsEditingLocName(true)}>{currentLocationName}</span>}
-                                                <button onClick={() => setIsEditingLocName(!isEditingLocName)} className="text-slate-400 hover:text-blue-500"><Icons.Edit2 size={12}/></button>
-                                            </div>
-                                            <button onClick={saveCurrentViewAsLocation} className="text-[10px] bg-blue-50 text-blue-600 px-2 py-1 rounded hover:bg-blue-100 flex items-center gap-1"><Icons.Save size={12}/> 保存视角</button>
-                                        </div>
                                     </div>
                                 </div>
+                                <button className="text-slate-400 hover:text-slate-600 hover:bg-slate-100 p-2 rounded-full transition" onClick={() => setShowSidebar(false)} title="收起菜单">
+                                    <Icons.Minimize size={20}/>
+                                </button>
+                            </div>
 
-                                {activeTool === 'draw-region' ? (
-                                    <div className="bg-blue-50 p-3 rounded-lg border border-blue-200 animate-pulse">
-                                        <h3 className="text-xs font-bold text-blue-600 mb-2 flex items-center gap-1"><Icons.PenTool size={14}/> 正在绘制区域...</h3>
-                                        <p className="text-[10px] text-blue-500 mb-2">在地图上点击添加顶点，至少3个点</p>
-                                        <div className="flex gap-2">
-                                            <button onClick={finishDrawing} className="flex-1 bg-blue-600 text-white py-1 rounded text-xs hover:bg-blue-700">完成绘制</button>
-                                            <button onClick={() => { setDrawingPoints([]); setActiveTool(null); }} className="flex-1 bg-white text-slate-600 border py-1 rounded text-xs hover:bg-slate-50">取消</button>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <button onClick={() => setActiveTool('draw-region')} className="w-full flex items-center justify-center gap-2 bg-white border-2 border-dashed border-slate-300 text-slate-500 py-2 rounded-lg hover:border-blue-400 hover:text-blue-500 hover:bg-blue-50 transition-all text-xs font-bold">
-                                        <Icons.Square size={14}/> 绘制调研区域 (圈地)
-                                    </button>
-                                )}
-
-                                <div>
-                                    <h3 className="text-xs font-bold text-slate-400 uppercase mb-2">添加标记</h3>
-                                    <div className="space-y-2">
-                                        <button onClick={() => setActiveTool('obstacle')} className={`w-full flex gap-3 p-3 border rounded-lg transition-colors ${activeTool==='obstacle'?'bg-red-50 border-red-500 ring-2 ring-red-200':''}`}><div className="text-red-600 bg-red-100 p-2 rounded-full"><Icons.AlertTriangle/></div><div className="text-left"><div className="font-bold text-sm">障碍点</div><div className="text-xs text-slate-500">标记台阶/陡坡</div></div></button>
-                                        <button onClick={() => setActiveTool('facility')} className={`w-full flex gap-3 p-3 border rounded-lg transition-colors ${activeTool==='facility'?'bg-green-50 border-green-500 ring-2 ring-green-200':''}`}><div className="text-green-600 bg-green-100 p-2 rounded-full"><Icons.CheckCircle/></div><div className="text-left"><div className="font-bold text-sm">设施点</div><div className="text-xs text-slate-500">标记电梯/坡道</div></div></button>
-                                        <button onClick={() => setActiveTool('experience')} className={`w-full flex gap-3 p-3 border rounded-lg transition-colors ${activeTool==='experience'?'bg-blue-50 border-blue-500 ring-2 ring-blue-200':''}`}><div className="text-blue-600 bg-blue-100 p-2 rounded-full"><Icons.Users/></div><div className="text-left"><div className="font-bold text-sm">体验点</div><div className="text-xs text-slate-500">通过感受/建议</div></div></button>
-                                    </div>
-                                </div>
+                            <div className="flex-1 overflow-y-auto p-4 space-y-8">
+                                <section><h3 className="text-xs font-bold text-slate-400 uppercase mb-3 tracking-wider">位置</h3><div className="flex flex-wrap gap-2 mb-3">{customLocations.map(loc => (<button key={safeRender(loc.name)} onClick={() => {if(mapInstanceRef.current) mapInstanceRef.current.flyTo(loc.coords || loc.points[0], 16); setCurrentLocationName(loc.name); if(window.innerWidth<768) setShowSidebar(false);}} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white hover:border-blue-300 hover:text-blue-600 transition active:scale-95">{safeRender(loc.name)}</button>))}</div><div className="relative"><Icons.Search size={14} className="absolute left-3 top-3 text-slate-400"/><input className="w-full text-xs border border-slate-200 rounded-lg pl-9 pr-3 py-2.5 bg-slate-50 outline-none" placeholder="搜索..." value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} onKeyDown={e=>e.key==='Enter'&&handleSearch()}/></div></section>
+                                <section><h3 className="text-xs font-bold text-slate-400 uppercase mb-3 tracking-wider">标记</h3><div className="space-y-3"><button onClick={() => startAddTool('obstacle')} className="w-full flex gap-3 p-3.5 border rounded-xl bg-white hover:shadow-md transition-all group"><div className="text-white bg-red-500 p-2.5 rounded-lg group-hover:scale-110 transition-transform"><Icons.AlertTriangle size={20}/></div><div><div className="font-bold text-sm text-slate-800">障碍点</div><div className="text-xs text-slate-500">标记台阶、陡坡</div></div></button><button onClick={() => startAddTool('facility')} className="w-full flex gap-3 p-3.5 border rounded-xl bg-white hover:shadow-md transition-all group"><div className="text-white bg-green-500 p-2.5 rounded-lg group-hover:scale-110 transition-transform"><Icons.CheckCircle size={20}/></div><div><div className="font-bold text-sm text-slate-800">设施点</div><div className="text-xs text-slate-500">标记电梯、厕所</div></div></button><button onClick={() => startAddTool('experience')} className="w-full flex gap-3 p-3.5 border rounded-xl bg-white hover:shadow-md transition-all group"><div className="text-white bg-blue-500 p-2.5 rounded-lg group-hover:scale-110 transition-transform"><Icons.Users size={20}/></div><div><div className="font-bold text-sm text-slate-800">体验点</div><div className="text-xs text-slate-500">分享感受</div></div></button></div></section>
+                                <section><h3 className="text-xs font-bold text-slate-400 uppercase mb-3 tracking-wider">绘图</h3><div className="grid grid-cols-2 gap-3"><button onClick={() => startAddTool('draw-route')} className="flex flex-col items-center justify-center gap-2 p-3 rounded-xl border border-dashed bg-slate-50 hover:bg-white transition"><Icons.Route size={20}/><span className="text-xs font-bold">路线</span></button><button onClick={() => startAddTool('draw-region')} className="flex flex-col items-center justify-center gap-2 p-3 rounded-xl border border-dashed bg-slate-50 hover:bg-white transition"><Icons.Square size={20}/><span className="text-xs font-bold">区域</span></button></div></section>
                                 
-                                {/* [核心新增] 地图要素视图 */}
-                                <div>
-                                    <h3 className="text-xs font-bold text-slate-400 uppercase mb-2 flex items-center gap-1"><Icons.Layers size={14}/> 地图要素视图</h3>
-                                    <p className="text-[10px] text-slate-500 mb-2">切换底图突出显示特定地理要素</p>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        {Object.keys(MAP_ELEMENTS).map(key => {
-                                            const element = MAP_ELEMENTS[key];
-                                            const isSelected = activeElementFilters === key;
-                                            return (
+                                <section>
+                                    <h3 className="text-xs font-bold text-slate-400 uppercase mb-3 flex items-center gap-1 tracking-wider"><Icons.Layers size={14}/> 图层设置</h3>
+                                    <div className="flex bg-slate-100 p-1 rounded-lg mb-4">{Object.keys(TILE_LAYERS).map(key => (<button key={key} onClick={() => setActiveBaseLayer(key)} className={`flex-1 py-1.5 text-xs rounded-md font-bold ${activeBaseLayer === key ? 'bg-white shadow-sm text-slate-800' : 'text-slate-400'}`}>{TILE_LAYERS[key].name}</button>))}</div>
+                                    
+                                    <div className="mb-4">
+                                        <div className="text-[10px] font-bold text-slate-400 mb-2 uppercase tracking-wider">地图透视</div>
+                                        <div className="grid grid-cols-4 gap-2">
+                                            {Object.keys(MAP_ELEMENTS).map(key => (
                                                 <button 
                                                     key={key} 
-                                                    onClick={() => toggleElementFilter(key)}
-                                                    className={`flex items-center gap-2 p-2 rounded-lg text-xs transition-colors border ${isSelected ? 'bg-blue-100 border-blue-400 text-blue-700 font-bold' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+                                                    onClick={() => toggleElementFilter(key)} 
+                                                    className={`flex flex-col items-center justify-center p-2 rounded-lg border text-[10px] transition-all ${activeElementFilters === key ? 'bg-indigo-50 border-indigo-500 text-indigo-700 font-bold' : 'bg-white border-slate-100 text-slate-500 hover:border-slate-300'}`}
                                                 >
-                                                    <element.icon size={16}/>
-                                                    {element.name}
+                                                    <div className="mb-1">{React.createElement(Icons[MAP_ELEMENTS[key].layer === 'building' ? 'Building' : MAP_ELEMENTS[key].layer === 'road' ? 'Road' : MAP_ELEMENTS[key].layer === 'water' ? 'Droplet' : 'TreePine'], {size:16})}</div>
+                                                    {MAP_ELEMENTS[key].name.slice(0,2)}
                                                 </button>
-                                            )
-                                        })}
+                                            ))}
+                                        </div>
                                     </div>
-                                </div>
-                                
-                                <div>
-                                    <h3 className="text-xs font-bold text-slate-400 uppercase mb-2 flex items-center gap-1"><Icons.Layers size={14}/> 标记点图层</h3>
-                                    <div className="flex bg-slate-100 p-1 rounded-lg mb-3">
-                                        {Object.keys(TILE_LAYERS).map(key => (
-                                            <button key={key} onClick={() => setActiveBaseLayer(key)} className={`flex-1 py-1 text-xs rounded-md transition-all ${activeBaseLayer === key ? 'bg-white shadow text-blue-600 font-bold' : 'text-slate-500 hover:text-slate-700'}`}>{TILE_LAYERS[key].name}</button>
-                                        ))}
-                                    </div>
-                                    <div className="space-y-2">
-                                        {[{ id: 'obstacle', label: '障碍点', color: 'text-red-500' }, { id: 'facility', label: '设施点', color: 'text-green-500' }, { id: 'experience', label: '体验点', color: 'text-blue-500' }].map(item => (
-                                            <div key={item.id} className="flex items-center justify-between p-2 border rounded hover:bg-slate-50 cursor-pointer" onClick={() => toggleLayer(item.id)}>
-                                                <div className="flex items-center gap-2"><span className={`w-2 h-2 rounded-full ${item.id === 'obstacle' ? 'bg-red-500' : item.id === 'facility' ? 'bg-green-500' : 'bg-blue-500'}`}></span><span className="text-sm text-slate-700">{item.label}</span></div>
-                                                {visibleTypes[item.id] ? <Icons.Eye size={16} className="text-slate-400"/> : <Icons.EyeOff size={16} className="text-slate-300"/>}
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
+
+                                    <div className="space-y-2">{[{ id: 'obstacle', label: '障碍点', color: 'bg-red-500' }, { id: 'facility', label: '设施点', color: 'bg-green-500' }, { id: 'experience', label: '体验点', color: 'bg-blue-500' }].map(item => (<div key={item.id} className="flex items-center justify-between p-2.5 border border-slate-100 rounded-lg bg-white hover:bg-slate-50 transition cursor-pointer" onClick={() => toggleLayer(item.id)}><div className="flex items-center gap-3"><span className={`w-2.5 h-2.5 rounded-full ${item.color} ring-2 ring-white shadow-sm`}></span><span className="text-xs font-bold text-slate-700">{item.label}</span></div><div className="text-slate-300">{visibleTypes[item.id] ? <Icons.Eye size={16}/> : <Icons.EyeOff size={16}/>}</div></div>))}</div>
+                                </section>
                             </div>
-                            <div className="p-4 border-t flex gap-2 bg-slate-50">
-                                <button onClick={()=>setShowStats(true)} className="flex-1 flex-col flex items-center justify-center gap-1 bg-slate-100 py-2 rounded text-[10px] hover:bg-slate-200"><Icons.BarChart2 size={16}/>统计</button>
-                                <button onClick={exportData} className="flex-1 flex-col flex items-center justify-center gap-1 bg-slate-100 py-2 rounded text-[10px] hover:bg-slate-200"><Icons.Download size={16}/>数据</button>
-                                <button onClick={handleSaveSnapshot} className="flex-1 flex-col flex items-center justify-center gap-1 bg-slate-800 text-white py-2 rounded text-[10px] hover:bg-slate-700"><Icons.Camera size={16}/>存图</button>
-                            </div>
+                            <div className="p-4 border-t border-slate-200 bg-slate-50/80 backdrop-blur-sm"><div className="flex gap-3"><button onClick={()=>{setShowStats(true); if(window.innerWidth<768) setShowSidebar(false);}} className="flex-1 bg-white border border-slate-200 py-3 rounded-xl text-xs text-slate-600 flex flex-col items-center justify-center gap-1 hover:shadow-md transition"><Icons.BarChart2 size={20} className="text-blue-500"/><span className="font-bold">统计</span></button><button onClick={exportData} className="flex-1 bg-white border border-slate-200 py-3 rounded-xl text-xs text-slate-600 flex flex-col items-center justify-center gap-1 hover:shadow-md transition"><Icons.Download size={20} className="text-green-500"/><span className="font-bold">数据</span></button><button onClick={handleSaveSnapshot} className="flex-1 bg-slate-800 text-white py-3 rounded-xl text-xs flex flex-col items-center justify-center gap-1 hover:shadow-lg transition"><Icons.Camera size={20}/><span className="font-bold">存图</span></button></div></div>
                         </div>
-                        <div className="absolute top-4 left-4 pointer-events-auto md:hidden">
-                            <button onClick={() => setShowSidebar(!showSidebar)} className="bg-white p-2 rounded shadow hover:bg-gray-100 text-slate-600">菜单</button>
-                        </div>
-                        {renderDetailForm()}
-                        {renderStatsModal()}
                     </div>
                 </div>
             );
