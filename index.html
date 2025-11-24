@@ -3,75 +3,45 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <meta name="description" content="川小桥 | 无止 - 校园无障碍环境监测与互助地图系统 V24.6">
+    <meta name="description" content="川小桥 | 无止 - 专业的校园无障碍环境监测与互助地图系统 V25.0">
     <meta name="theme-color" content="#3b82f6">
-    <title>川小桥 | 无止 -校园无障碍环境监测与互助地图系统 </title>
+    <title>川小桥 | 无止 - 稳定持久化版 (V25.0)</title>
     
     <!-- ==================================================================================
          1. 核心依赖库 (CDN)
          ================================================================================== -->
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- React & ReactDOM -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    
-    <!-- Babel -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
+    
     <!-- Firebase -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
 
-    <!-- Leaflet Map -->
+    <!-- Leaflet -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     
-    <!-- html2canvas (用于截图) -->
+    <!-- html2canvas -->
     <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
 
     <!-- ==================================================================================
          2. 全局样式定义 (CSS)
          ================================================================================== -->
     <style>
-        /* --- 基础重置 --- */
         body, html, #root { 
-            margin: 0; 
-            padding: 0; 
-            height: 100%; 
-            height: 100dvh; 
-            width: 100%; 
-            overflow: hidden; 
-            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; 
-            -webkit-tap-highlight-color: transparent; 
-            background-color: #f8fafc;
-            touch-action: manipulation;
+            margin: 0; padding: 0; height: 100%; height: 100dvh; width: 100%; overflow: hidden; 
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            -webkit-tap-highlight-color: transparent; background-color: #f8fafc; touch-action: manipulation; 
         }
         
-        /* 地图容器 */
-        #map-container { 
-            position: absolute; 
-            top: 0; left: 0; right: 0; bottom: 0; 
-            z-index: 0; 
-            background: #e2e8f0; 
-            transition: filter 0.3s ease;
-        }
-        
-        /* UI 层 */
-        .ui-layer { 
-            position: absolute; 
-            inset: 0; 
-            z-index: 1000; 
-            pointer-events: none; 
-            overflow: hidden; 
-            display: flex; 
-            flex-direction: column; 
-        }
+        #map-container { position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 0; background: #e2e8f0; transition: filter 0.3s ease; }
+        .ui-layer { position: absolute; inset: 0; z-index: 1000; pointer-events: none; overflow: hidden; display: flex; flex-direction: column; }
         .pointer-events-auto { pointer-events: auto; }
 
-        /* --- 动画 --- */
+        /* 动画 */
         @keyframes slideInUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes scaleIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
@@ -85,87 +55,42 @@
         .mic-active { animation: pulse-red 1.5s infinite; }
         .gauge-anim { animation: gauge 1s ease-out forwards; }
 
-        /* --- 侧边栏 --- */
-        .sidebar-backdrop {
-            position: fixed; inset: 0; background: rgba(0,0,0,0.4); 
-            z-index: 1500; 
-            opacity: 0; transition: opacity 0.3s; pointer-events: none; backdrop-filter: blur(2px);
-        }
+        /* 侧边栏 */
+        .sidebar-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 1500; opacity: 0; transition: opacity 0.3s; pointer-events: none; backdrop-filter: blur(2px); }
         .sidebar-backdrop.active { opacity: 1; pointer-events: auto; }
-        
-        .sidebar-panel {
-            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s;
-            box-shadow: 4px 0 24px rgba(0,0,0,0.15);
-            z-index: 2000; 
-        }
+        .sidebar-panel { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s; box-shadow: 4px 0 24px rgba(0,0,0,0.15); z-index: 2000; }
 
-        /* --- 底部面板 --- */
-        .bottom-sheet { 
-            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); 
-            transform: translateY(105%); 
-            box-shadow: 0 -4px 20px rgba(0,0,0,0.15); 
-        }
+        /* 底部面板 */
+        .bottom-sheet { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); transform: translateY(105%); box-shadow: 0 -4px 20px rgba(0,0,0,0.15); }
         .bottom-sheet.active { transform: translateY(0); }
         .sheet-handle { width: 40px; height: 4px; background: #cbd5e1; border-radius: 2px; margin: 8px auto; }
 
-        /* --- 标记样式 --- */
+        /* 标记样式 */
         .custom-div-icon { background: transparent; border: none; }
-        .marker-pin { 
-            width: 30px; height: 30px; border-radius: 50% 50% 50% 0; 
-            background: #3b82f6; position: absolute; transform: rotate(-45deg); 
-            left: 50%; top: 50%; margin: -15px 0 0 -15px; 
-            box-shadow: 0 3px 5px rgba(0,0,0,0.3); border: 2px solid #FFFFFF; 
-            display: flex; align-items: center; justify-content: center; 
-            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); 
-        }
+        .marker-pin { width: 30px; height: 30px; border-radius: 50% 50% 50% 0; background: #3b82f6; position: absolute; transform: rotate(-45deg); left: 50%; top: 50%; margin: -15px 0 0 -15px; box-shadow: 0 3px 5px rgba(0,0,0,0.3); border: 2px solid #FFFFFF; display: flex; align-items: center; justify-content: center; transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
         .marker-pin i { transform: rotate(45deg); font-style: normal; color: white; font-weight: 800; font-size: 14px; line-height: 1; }
+        .marker-obstacle { background: #ef4444; } .marker-facility { background: #22c55e; } .marker-experience { background: #3b82f6; } .marker-fixed { background: #64748b !important; border-color: #e2e8f0 !important; }
+        .marker-selected { transform: rotate(-45deg) scale(1.4) !important; border-color: #fbbf24 !important; z-index: 999 !important; opacity: 1 !important; filter: none !important; box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.5); }
         
-        .marker-obstacle { background: #ef4444; } 
-        .marker-facility { background: #22c55e; } 
-        .marker-experience { background: #3b82f6; } 
-        .marker-fixed { background: #64748b !important; border-color: #e2e8f0 !important; }
-        .marker-selected { 
-            transform: rotate(-45deg) scale(1.4) !important; 
-            border-color: #fbbf24 !important; z-index: 999 !important; 
-            opacity: 1 !important; filter: none !important; 
-            box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.5); 
-        }
-        
-        /* --- 精确标记光标 --- */
-        .cursor-target {
-            cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="none" stroke="%23ef4444" stroke-width="2"/><line x1="16" y1="0" x2="16" y2="32" stroke="%23ef4444" stroke-width="2"/><line x1="0" y1="16" x2="32" y2="16" stroke="%23ef4444" stroke-width="2"/><circle cx="16" cy="16" r="4" fill="%23ef4444"/></svg>') 16 16, crosshair !important;
-        }
+        /* [核心] 精确瞄准光标 */
+        .cursor-target { cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="12" fill="none" stroke="%23ef4444" stroke-width="2"/><line x1="16" y1="0" x2="16" y2="32" stroke="%23ef4444" stroke-width="2"/><line x1="0" y1="16" x2="32" y2="16" stroke="%23ef4444" stroke-width="2"/><circle cx="16" cy="16" r="3" fill="%23ef4444"/></svg>') 16 16, crosshair !important; }
         .map-default-cursor { cursor: grab; }
         .map-default-cursor:active { cursor: grabbing; }
 
         .route-tooltip { background: rgba(255,255,255,0.95); border: 1px solid #cbd5e1; box-shadow: 0 4px 6px rgba(0,0,0,0.1); font-weight: bold; font-size: 12px; color: #334155; border-radius: 6px; padding: 4px 8px; }
-
-        /* 扫描光效 */
-        .scanning-bar { 
-            position: absolute; top: 0; left: 0; width: 100%; height: 4px; 
-            background: linear-gradient(90deg, transparent, #3b82f6, transparent); 
-            animation: scan 1.5s infinite; z-index: 5000; display: none; 
-        }
+        .scanning-bar { position: absolute; top: 0; left: 0; width: 100%; height: 4px; background: linear-gradient(90deg, transparent, #3b82f6, transparent); animation: scan 1.5s infinite; z-index: 5000; display: none; }
         .scanning .scanning-bar { display: block; }
-
-        /* 高对比度模式 */
         .high-contrast { filter: contrast(130%); }
         .high-contrast .bg-white { background-color: #000 !important; color: #fff !important; border: 1px solid #fff !important; }
         .high-contrast .text-slate-600, .high-contrast .text-slate-500 { color: #e2e8f0 !important; }
         .high-contrast .bg-slate-50, .high-contrast .bg-slate-100 { background-color: #1e293b !important; color: #fff !important; }
-
-        /* 交互按钮特效 */
         .fab-btn { transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
         .fab-btn:active { transform: scale(0.9); }
         .toggle-sidebar-btn { transition: all 0.3s; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
         .toggle-sidebar-btn:active { transform: scale(0.9); }
-        
-        /* 滚动条 */
         ::-webkit-scrollbar { width: 5px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-        
         .search-dropdown { max-height: 200px; overflow-y: auto; scrollbar-width: thin; }
     </style>
 </head>
@@ -177,18 +102,9 @@
 
         const safeRender = (val) => (val === null || val === undefined || typeof val === 'object') ? '' : String(val);
 
-        // ----------------------------------------------------------------------------
         // 2. 配置 (STRICTLY PRESERVED)
-        // ----------------------------------------------------------------------------
-        const FIREBASE_CONFIG = {
-            apiKey: "AIzaSyCcBlaYfmLizo1E6mV87U6ytReqSuMTX5M",
-             authDomain: "scuwzq-9bcfb.firebaseapp.com",
-             projectId: "scuwzq-9bcfb",
-             storageBucket: "scuwzq-9bcfb.firebasestorage.app",
-             messagingSenderId: "1028374721634",
-             appId: "1:1028374721634:web:30714cb0acb6a951590d3b" 
-        };
-        const GEMINI_API_KEY = ""; // 请填入 API Key
+        const FIREBASE_CONFIG = { apiKey: "AIzaSyCcBlaYfmLizo1E6mV87U6ytReqSuMTX5M", authDomain: "scuwzq-9bcfb.firebaseapp.com", projectId: "scuwzq-9bcfb", storageBucket: "scuwzq-9bcfb.firebasestorage.app", messagingSenderId: "1028374721634", appId: "1:1028374721634:web:30714cb0acb6a951590d3b" };
+        const GEMINI_API_KEY = ""; 
         const AI_ENDPOINT_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 
         const TILE_LAYERS = {
@@ -197,10 +113,7 @@
             simple: { name: "极简", url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", attribution: '&copy; CARTO' }
         };
 
-        const OBSTACLE_CATEGORIES = [
-            { value: 'stairs', label: '🚧 台阶/高差' }, { value: 'slope', label: '📉 坡度过陡' }, { value: 'surface', label: '🕳️ 路面不平/坑洼' },
-            { value: 'width', label: '↔️ 通道过窄' }, { value: 'blocked', label: '🚫 盲道被占用' }, { value: 'other', label: '❓ 其他问题' },
-        ];
+        const OBSTACLE_CATEGORIES = [ { value: 'stairs', label: '🚧 台阶/高差' }, { value: 'slope', label: '📉 坡度过陡' }, { value: 'surface', label: '🕳️ 路面不平' }, { value: 'width', label: '↔️ 通道过窄' }, { value: 'blocked', label: '🚫 盲道占用' }, { value: 'other', label: '❓ 其他问题' } ];
 
         const MAP_ELEMENTS = {
             buildings: { name: "建筑", layer: 'building', icon: 'Building', query: `way["building"]` },
@@ -209,7 +122,6 @@
             plants: { name: "景观/绿植", layer: 'green', icon: 'TreePine', query: `way["leisure"="park"]; way["landuse"="grass"]` }
         };
 
-        // 城市意象配置 
         const CITY_IMAGERY = {
             paths: { name: "道路 (Paths)", query: `way["highway"~"primary|secondary|tertiary|residential|footway"]`, style: {color: '#f97316', weight: 3}, icon: 'Route' },
             edges: { name: "边界 (Edges)", query: `way["barrier"]; way["waterway"]; way["natural"="coastline"]`, style: {color: '#1e293b', weight: 4, dashArray: '5,5'}, icon: 'Activity' },
@@ -218,28 +130,14 @@
             landmarks: { name: "标志 (Landmarks)", query: `node["tourism"]; node["historic"]; way["building"~"public|university"]; node["amenity"~"library|theatre"]`, isNode: true, style: {radius: 6, color: '#eab308', fillColor: '#fef08a'}, icon: 'Star' }
         };
 
-        const INITIAL_LOCATIONS = [
-            { name: "江安校区", coords: [30.556, 103.998], type: 'point' },
-            { name: "望江校区", coords: [30.631, 104.085], type: 'point' },
-            { name: "华西校区", coords: [30.622, 104.068], type: 'point' }
-        ];
+        const INITIAL_LOCATIONS = [ { name: "江安校区", coords: [30.556, 103.998], type: 'point' }, { name: "望江校区", coords: [30.631, 104.085], type: 'point' }, { name: "华西校区", coords: [30.622, 104.068], type: 'point' } ];
 
-        // ----------------------------------------------------------------------------
-        // 3. 初始化 Firebase
-        // ----------------------------------------------------------------------------
         let db = null; let auth = null; let isOfflineMode = true;
         if (FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.apiKey.length > 5) {
-            try {
-                if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
-                auth = firebase.auth(); db = firebase.firestore();
-                db.enablePersistence().catch(e=>{}); isOfflineMode = false;
-                console.log("🔥 Firebase 在线模式已激活");
-            } catch (e) { console.error("Firebase Init Error", e); }
+            try { if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG); auth = firebase.auth(); db = firebase.firestore(); db.enablePersistence().catch(e=>{}); isOfflineMode = false; } catch (e) { console.error("Firebase Init Error", e); }
         }
 
-        // ----------------------------------------------------------------------------
         // 4. 图标库
-        // ----------------------------------------------------------------------------
         const Icons = {
             Menu: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>,
             X: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
@@ -280,36 +178,13 @@
             History: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
         };
 
-        // ----------------------------------------------------------------------------
-        // 5. 工具组件
-        // ----------------------------------------------------------------------------
         const vibrate = (pattern = 50) => { if (navigator.vibrate) navigator.vibrate(pattern); };
         const generateRandomName = () => '热心行者_' + Math.floor(Math.random()*1000);
         
-        // CSV 格式化函数 [Fix]
-        const escapeCSV = (str) => {
-            if (str === null || str === undefined) return '';
-            const stringValue = String(str);
-            if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
-                return `"${stringValue.replace(/"/g, '""')}"`;
-            }
-            return stringValue;
-        };
-
         const Toast = ({ message, onClose }) => {
-            useEffect(() => {
-                if (message) {
-                    const timer = setTimeout(onClose, 3000);
-                    return () => clearTimeout(timer);
-                }
-            }, [message]);
-
+            useEffect(() => { if(message) { const t = setTimeout(onClose, 3000); return () => clearTimeout(t); } }, [message]);
             if (!message) return null;
-            return (
-                <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800/90 text-white px-5 py-3 rounded-full text-sm font-bold shadow-xl z-[3000] flex items-center gap-2 anim-fade-in backdrop-blur-md border border-slate-700/50">
-                    <span>{safeRender(message)}</span>
-                </div>
-            );
+            return <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800/90 text-white px-5 py-3 rounded-full text-sm font-bold shadow-xl z-[3000] flex items-center gap-2 anim-fade-in backdrop-blur-md border border-slate-700/50"><span>{safeRender(message)}</span></div>;
         };
 
         const SafeTextarea = ({ initialValue, onSave, placeholder }) => {
@@ -332,9 +207,6 @@
             );
         };
 
-        // ----------------------------------------------------------------------------
-        // 6. MapView (地图核心)
-        // ----------------------------------------------------------------------------
         const MapView = React.memo(({ markers, selectedMarkerId, activeTool, onMapClick, onMarkerClick, onMapReady, activeBaseLayer, visibleTypes, currentUserId, customRegions, drawingPoints, currentRoutePoints, customRoutes, onRouteClick, onRegionClick, activeElementFilters, activeImageryFilter }) => {
             const mapRef = useRef(null);
             const layers = useRef({});
@@ -359,7 +231,6 @@
                 }
             }, [activeBaseLayer]);
 
-            // 地图要素 (Overpass)
             useEffect(() => {
                 if (!layers.current.element) return;
                 layers.current.element.clearLayers();
@@ -379,7 +250,6 @@
                 }).catch(e=>{}).finally(()=>document.body.classList.remove('scanning'));
             }, [activeElementFilters]);
 
-            // 城市意象 
             useEffect(() => {
                 if (!layers.current.imagery) return;
                 layers.current.imagery.clearLayers();
@@ -401,7 +271,6 @@
                     });
                 }).catch(e=>{}).finally(()=>document.body.classList.remove('scanning'));
             }, [activeImageryFilter]);
-
 
             useEffect(() => {
                 if (!layers.current.routes) return;
@@ -454,7 +323,6 @@
                 });
             }, [markers, selectedMarkerId, visibleTypes, currentUserId]);
 
-            // [升级] 动态光标
             useEffect(() => {
                 const el = document.getElementById('map-container');
                 if(el) {
@@ -467,9 +335,6 @@
             return <div id="map-container"></div>;
         });
 
-        // ----------------------------------------------------------------------------
-        // 7. App Logic
-        // ----------------------------------------------------------------------------
         const App = () => {
             const [markers, setMarkers] = useState([]);
             const [activeTool, setActiveTool] = useState(null);
@@ -481,8 +346,8 @@
             const [toastMsg, setToastMsg] = useState(null);
             const [isHighContrast, setIsHighContrast] = useState(false);
             const [isConnected, setIsConnected] = useState(false);
-            const [userName, setUserName] = useState('');
-            const [currentUserId, setCurrentUserId] = useState('');
+            const [userName, setUserName] = useState(''); 
+            const [currentUserId, setCurrentUserId] = useState(''); 
             const [activeBaseLayer, setActiveBaseLayer] = useState('standard');
             const [visibleTypes, setVisibleTypes] = useState({ obstacle: true, facility: true, experience: true });
             const [activeElementFilters, setActiveElementFilters] = useState(null); 
@@ -497,7 +362,6 @@
             const [drawingPoints, setDrawingPoints] = useState([]); 
             const [currentRoutePoints, setCurrentRoutePoints] = useState([]);
             const [customRoutes, setCustomRoutes] = useState([]);
-            
             const mapInstanceRef = useRef(null);
             const markerImageInputRef = useRef(null);
             const [aiAnalysisResult, setAiAnalysisResult] = useState(null);
@@ -506,8 +370,12 @@
             const searchTimeoutRef = useRef(null);
 
             const safeParse = (key, fb) => { try { const i = localStorage.getItem(key); return i ? JSON.parse(i) : fb; } catch(e){ return fb; } };
-            
+
             useEffect(() => {
+                // 1. Load LocalStorage first (Always!)
+                const saved = safeParse('offline_markers', []);
+                setMarkers(saved);
+
                 let savedName = localStorage.getItem('user_nickname');
                 let savedId = localStorage.getItem('user_id');
                 if (!savedId) { savedId = 'uid_' + Math.random().toString(36).substr(2, 9); localStorage.setItem('user_id', savedId); }
@@ -518,8 +386,6 @@
                 setCustomLocations(safeParse('custom_locations', INITIAL_LOCATIONS));
                 setCustomRoutes(safeParse('custom_routes', []));
                 setSearchHistory(safeParse('search_history', [])); 
-                const savedMarkers = safeParse('offline_markers', []);
-                setMarkers(savedMarkers);
                 
                 const handleResize = () => { if (window.innerWidth > 768 && !showSidebar) setShowSidebar(true); };
                 window.addEventListener('resize', handleResize);
@@ -537,17 +403,20 @@
                     auth.onAuthStateChanged(user => {
                         setIsConnected(!!user);
                         if (user) {
+                            // If online, listen to DB, BUT ALSO MERGE or respect LocalStorage
                             const unsubscribe = db.collection('markers').onSnapshot(snap => {
                                 const loaded = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(m => m.lat && m.lng); 
+                                // Simple strategy: Use DB as truth if connected, but fallback logic handles updates.
+                                // For V25, let's stick to: If DB updates, we update state. 
+                                // We also update LS whenever state changes (in the update functions).
                                 setMarkers(loaded);
+                                localStorage.setItem('offline_markers', JSON.stringify(loaded));
                             }, err => console.error("Snapshot Error", err));
                             return () => unsubscribe();
                         }
                     });
-                } else {
-                    const saved = safeParse('offline_markers', []);
-                    setMarkers(saved.filter(m => m.lat && m.lng));
                 }
+                // Note: We already loaded LS in the first useEffect.
             }, []);
 
             const showToast = useCallback((msg) => setToastMsg(msg), []);
@@ -555,7 +424,6 @@
             const toggleElementFilter = (key) => { setActiveElementFilters(p => p === key ? null : key); setActiveBaseLayer(key==='buildings'?'satellite':key==='water'?'simple':'standard'); };
             const toggleImageryFilter = (key) => { setActiveImageryFilter(p => p === key ? null : key); };
 
-            // 搜索
             const handleSearchInput = (e) => {
                 const val = e.target.value;
                 setSearchQuery(val);
@@ -587,109 +455,93 @@
                 localStorage.removeItem('search_history');
             };
             
-            // [Fix] 修复的导出逻辑
             const exportData = () => {
-                // CSV Header
-                const headers = ["ID", "类型(Type)", "描述(Desc)", "经度(Lng)", "纬度(Lat)", "AI分析(AI)", "获赞(Votes)", "作者(Author)", "时间(Time)", "评分(Rating)"];
-                
-                // Data Rows
+                const headers = ["ID", "Type", "Desc", "Coords", "AI", "Votes", "Author", "Time", "Rating"];
                 const rows = markers.map(m => [
-                    safeRender(m.id),
-                    safeRender(m.type),
-                    escapeCSV(m.description),
-                    safeRender(m.lng),
-                    safeRender(m.lat),
-                    escapeCSV(m.aiResult),
-                    safeRender(m.votes || 0),
-                    escapeCSV(m.author),
-                    new Date(m.timestamp).toLocaleString(),
-                    safeRender(m.rating || '-')
+                    safeRender(m.id), safeRender(m.type), escapeCSV(m.description),
+                    safeRender(m.lng), safeRender(m.lat), escapeCSV(m.aiResult),
+                    safeRender(m.votes || 0), escapeCSV(m.author),
+                    new Date(m.timestamp).toLocaleString(), safeRender(m.rating || '-')
                 ]);
-
-                // Combine
-                const csvContent = [
-                    headers.join(','),
-                    ...rows.map(row => row.join(','))
-                ].join('\n');
-
-                // Create Blob and Download
+                const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
                 const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
-                a.href = url;
-                a.download = `川小桥数据_${new Date().toISOString().slice(0,10)}.csv`;
-                document.body.appendChild(a); // Firefox compatibility
-                a.click();
-                document.body.removeChild(a);
+                a.href = url; a.download = `data_${Date.now()}.csv`;
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
             };
 
-            // [Fix] 修复的存图逻辑
             const handleSaveSnapshot = () => {
-                showToast("正在生成高清截图...");
+                showToast("生成截图中...");
                 const el = document.getElementById('map-container');
-                
-                // 1. 隐藏 UI
                 const ui = document.querySelector('.ui-layer');
                 if(ui) ui.style.visibility = 'hidden';
-
-                // 2. 使用 html2canvas 截图
-                html2canvas(el, {
-                    useCORS: true,        // 关键：允许跨域图片
-                    allowTaint: false,    // 关键：防止污染
-                    logging: false,
-                    scale: 2,             // 高清
-                    ignoreElements: (element) => element.classList.contains('ui-layer') // 双重保险
-                }).then(canvas => {
-                    // 3. 恢复 UI
+                html2canvas(el, { useCORS: true, allowTaint: false, logging: false }).then(canvas => {
                     if(ui) ui.style.visibility = 'visible';
-                    
-                    // 4. 下载
-                    const link = document.createElement('a');
-                    link.download = `川小桥快照_${Date.now()}.png`;
-                    link.href = canvas.toDataURL('image/png');
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                    showToast("截图已保存至相册");
+                    const link = document.createElement('a'); link.download = `map_${Date.now()}.png`;
+                    link.href = canvas.toDataURL('image/png'); document.body.appendChild(link); link.click(); document.body.removeChild(link);
                 }).catch(err => {
-                    console.error("Snapshot failed:", err);
-                    if(ui) ui.style.visibility = 'visible';
-                    alert("截图失败，请检查网络连接或刷新重试。\n(可能是地图瓦片跨域限制)");
+                    if(ui) ui.style.visibility = 'visible'; alert("截图失败");
                 });
             };
             
             const saveMarker = async (data) => {
                 vibrate();
                 const newM = { ...data, id: 'm_'+Date.now() };
+                
+                // Optimistic Update & Persistence
                 const updated = [...markers, newM];
                 setMarkers(updated);
                 localStorage.setItem('offline_markers', JSON.stringify(updated));
-                showToast("标记已保存");
+                showToast("📍 标记已保存");
+
+                if (!isOfflineMode && db && isConnected) {
+                    try { 
+                        const ref = await db.collection('markers').add(newM); 
+                        // Update ID if success
+                        const confirmed = updated.map(m => m.id === newM.id ? { ...m, id: ref.id } : m);
+                        setMarkers(confirmed);
+                        localStorage.setItem('offline_markers', JSON.stringify(confirmed));
+                        return ref.id; 
+                    } catch (e) { return newM.id; }
+                }
                 return newM.id;
             };
+
             const updateLocalMarker = (id, up) => {
                 const updated = markers.map(m => m.id === id ? { ...m, ...up } : m);
                 setMarkers(updated);
                 localStorage.setItem('offline_markers', JSON.stringify(updated));
-            };
-            const deleteLocalMarker = (id) => {
-                if(!confirm("删除此标记？")) return;
-                const updated = markers.filter(m => m.id !== id);
-                setMarkers(updated);
-                localStorage.setItem('offline_markers', JSON.stringify(updated));
-                setSelectedMarkerId(null);
-                showToast("已删除");
+                
+                if (!isOfflineMode && db && isConnected && !id.startsWith('m_')) {
+                    db.collection('markers').doc(id).update(up).catch(e=>{});
+                }
+                if(up.description || up.votes) showToast("💾 已保存");
             };
 
-            const handleMapClick = (latlng) => {
+            const deleteLocalMarker = (id) => {
+                 if (!confirm("删除此标记？")) return;
+                 const updated = markers.filter(m => m.id !== id);
+                 setMarkers(updated);
+                 localStorage.setItem('offline_markers', JSON.stringify(updated));
+                 setSelectedMarkerId(null);
+                 showToast("已删除");
+                 
+                 if (!isOfflineMode && db && isConnected && !id.startsWith('m_')) {
+                     db.collection('markers').doc(id).delete();
+                }
+            };
+
+            const handleMapClick = async (latlng) => {
                 if (activeTool === 'draw-region' || activeTool === 'draw-landscape') { setDrawingPoints(p => [...p, [latlng.lat, latlng.lng]]); vibrate(); return; }
                 if (activeTool === 'draw-route') { setCurrentRoutePoints(p => [...p, [latlng.lat, latlng.lng]]); vibrate(); return; }
                 if (!activeTool) { if (selectedMarkerId) setSelectedMarkerId(null); return; }
                 
-                saveMarker({
+                const newId = await saveMarker({
                     lat: latlng.lat, lng: latlng.lng, type: activeTool, description: '', author: userName, userId: currentUserId, timestamp: Date.now(),
                     category: activeTool==='obstacle'?'other':null, severity: 'medium', votes: 0, imageUrl: '', status: 'pending', rating: 0
-                }).then(id => { setActiveTool(null); setSelectedMarkerId(id); });
+                });
+                setActiveTool(null); setSelectedMarkerId(newId);
             };
 
             const finishDrawingRegion = () => {
@@ -810,12 +662,8 @@
                                 <button onClick={()=>{updateLocalMarker(m.id, {votes:(m.votes||0)+1}); showToast("已点赞")}} className="text-blue-600 text-xs font-bold flex gap-1"><Icons.ThumbsUp size={14}/> 靠谱({m.votes||0})</button>
                             </div>
                             <div className="space-y-1"><label className="block font-bold text-slate-700 ml-1">状态</label><select value={m.status || 'pending'} onChange={e => updateLocalMarker(m.id, {status: e.target.value})} className="w-full border-2 border-slate-200 rounded-xl p-2.5 bg-white"><option value="pending">待处理</option><option value="in_progress">进行中</option><option value="fixed">已修复</option></select></div>
-                            {m.type === 'experience' && (
-                                <div className="space-y-1"><label className="block font-bold text-slate-700 ml-1">体验评分</label><div className="flex gap-2">{[1,2,3,4,5].map(s => (<button key={s} onClick={()=>updateLocalMarker(m.id, {rating:s})} className={s<=(m.rating||0)?'text-yellow-500':'text-slate-300'}><Icons.Star size={24} fill="currentColor"/></button>))}</div></div>
-                            )}
-                            {m.type === 'obstacle' && (
-                                <div className="space-y-1"><label className="block font-bold text-slate-700 ml-1">类型</label><div className="grid grid-cols-2 gap-2">{OBSTACLE_CATEGORIES.map(c => (<button key={c.value} onClick={() => updateLocalMarker(m.id, {category: c.value})} className={`text-xs py-2 px-2 rounded-lg border text-center transition-all ${m.category === c.value ? 'bg-red-50 border-red-500 text-red-700 font-bold' : 'bg-white border-slate-200 text-slate-600'}`}>{c.label}</button>))}</div></div>
-                            )}
+                            {m.type === 'experience' && (<div className="space-y-1"><label className="block font-bold text-slate-700 ml-1">体验评分</label><div className="flex gap-2">{[1,2,3,4,5].map(s => (<button key={s} onClick={()=>updateLocalMarker(m.id, {rating:s})} className={s<=(m.rating||0)?'text-yellow-500':'text-slate-300'}><Icons.Star size={24} fill="currentColor"/></button>))}</div></div>)}
+                            {m.type === 'obstacle' && (<div className="space-y-1"><label className="block font-bold text-slate-700 ml-1">类型</label><div className="grid grid-cols-2 gap-2">{OBSTACLE_CATEGORIES.map(c => (<button key={c.value} onClick={() => updateLocalMarker(m.id, {category: c.value})} className={`text-xs py-2 px-2 rounded-lg border text-center transition-all ${m.category === c.value ? 'bg-red-50 border-red-500 text-red-700 font-bold' : 'bg-white border-slate-200 text-slate-600'}`}>{c.label}</button>))}</div></div>)}
                             <div className="space-y-1"><label className="block font-bold text-slate-700 ml-1">描述</label><SafeTextarea initialValue={m.description} onSave={v=>updateLocalMarker(m.id, {description:v})} placeholder="描述情况..."/></div>
                             <div className="space-y-1 border-t border-slate-200 pt-4">
                                 <div className="flex justify-between items-center mb-2"><span className="font-bold text-slate-700 ml-1">照片</span><button onClick={() => markerImageInputRef.current.click()} className="text-blue-600 text-xs font-bold flex items-center gap-1 bg-blue-50 px-3 py-1.5 rounded-lg"><Icons.Upload size={14}/> 上传</button><input type="file" ref={markerImageInputRef} onChange={e => handleMarkerImageUpload(e, m.id)} className="hidden" accept="image/*"/></div>
@@ -872,15 +720,9 @@
                         <div className="scanning-bar"></div>
                         {!showSidebar && <div className="absolute top-4 left-4 pointer-events-auto z-[1100] anim-scale-in"><button onClick={()=>{vibrate(); setShowSidebar(true);}} className="toggle-sidebar-btn bg-white w-12 h-12 rounded-full shadow-lg flex items-center justify-center border-2 border-blue-500 text-blue-600 active:bg-blue-50"><Icons.Menu size={24}/></button></div>}
                         
-                        {/* 底部栏 - V24.00 净化版 (无中间重复统计按钮) */}
                         <div className="absolute bottom-0 left-0 right-0 h-20 bg-white/95 backdrop-blur-md border-t border-slate-200 flex justify-between items-center px-6 z-[1100] pointer-events-auto shadow-2xl">
-                             {/* 左侧：定位 */}
                             <button onClick={handleLocateMe} className="p-3 rounded-full bg-blue-50 text-blue-600 shadow-sm hover:bg-blue-100 active:scale-95 transition"><Icons.Locate size={24}/></button>
                             
-                            {/* 中间：占位 (移除重复的统计按钮) */}
-                            <div className="flex-1"></div>
-                            
-                            {/* 右侧：添加 (FAB) */}
                             <div className="relative">
                                 {showFABMenu && <div className="absolute bottom-16 right-0 flex flex-col gap-3 items-end anim-scale-in origin-bottom-right w-40 pb-2">
                                     <button onClick={()=>{setActiveTool('experience'); setShowFABMenu(false); showToast("点击地图添加");}} className="w-full fab-btn flex items-center justify-between bg-blue-500 text-white px-4 py-2.5 rounded-full shadow-lg"><span className="text-sm font-bold">体验点</span><Icons.Users/></button>
@@ -903,7 +745,7 @@
                         
                         <div className={`sidebar-panel absolute top-0 left-0 h-full bg-white/95 backdrop-blur-md border-r border-slate-200 flex flex-col shadow-2xl pointer-events-auto z-[2000] w-80 max-w-[85vw] transform ${showSidebar ? 'translate-x-0' : '-translate-x-full'}`}>
                             <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                                <div><h1 className="text-xl font-black flex gap-2 text-slate-800 items-center tracking-tight"><span className="text-blue-600"><Icons.Navigation size={24}/></span> 川小桥 <span className="text-[10px] px-2 py-0.5 bg-indigo-500 text-white rounded-md font-bold tracking-wider">V24.00</span></h1><div className="mt-2 flex items-center gap-2 text-xs"><input value={userName} onChange={e => {setUserName(e.target.value); localStorage.setItem('user_nickname', e.target.value);}} className="border-b border-slate-300 w-20 bg-transparent outline-none font-bold text-slate-700" placeholder="昵称"/><button onClick={() => setIsHighContrast(!isHighContrast)} className={`flex items-center gap-1 p-1 rounded ${isHighContrast ? 'text-blue-600 font-bold bg-blue-50' : 'text-slate-400'}`}><Icons.Moon size={12}/> {isHighContrast ? '关' : '模式'}</button></div></div><button className="text-slate-400 hover:bg-slate-100 p-2 rounded-full" onClick={() => setShowSidebar(false)}><Icons.X size={20}/></button>
+                                <div><h1 className="text-xl font-black flex gap-2 text-slate-800 items-center tracking-tight"><span className="text-blue-600"><Icons.Navigation size={24}/></span> 川小桥 <span className="text-[10px] px-2 py-0.5 bg-indigo-500 text-white rounded-md font-bold tracking-wider">V25.0</span></h1><div className="mt-2 flex items-center gap-2 text-xs"><input value={userName} onChange={e => {setUserName(e.target.value); localStorage.setItem('user_nickname', e.target.value);}} className="border-b border-slate-300 w-20 bg-transparent outline-none font-bold text-slate-700" placeholder="昵称"/><button onClick={() => setIsHighContrast(!isHighContrast)} className={`flex items-center gap-1 p-1 rounded ${isHighContrast ? 'text-blue-600 font-bold bg-blue-50' : 'text-slate-400'}`}><Icons.Moon size={12}/> {isHighContrast ? '关' : '模式'}</button></div></div><button className="text-slate-400 hover:bg-slate-100 p-2 rounded-full" onClick={() => setShowSidebar(false)}><Icons.X size={20}/></button>
                             </div>
                             
                             <div className="flex border-b border-slate-200 bg-white">
@@ -933,7 +775,7 @@
                                         </section>
 
                                         <section>
-                                            <h3 className="text-xs font-bold text-slate-400 uppercase mb-3 tracking-wider flex items-center gap-1"><Icons.Activity size={14}/> 城市意象</h3>
+                                            <h3 className="text-xs font-bold text-slate-400 uppercase mb-3 tracking-wider flex items-center gap-1"><Icons.Activity size={14}/> 城市意象 (Kevin Lynch)</h3>
                                             <div className="grid grid-cols-3 gap-2 mb-4">
                                                 {Object.keys(CITY_IMAGERY).map(key => (
                                                     <button key={key} onClick={() => {
