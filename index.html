@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <meta name="description" content="川小桥 | 无止 - 专业的校园无障碍环境监测与互助地图系统 V25.0">
+    <meta name="description" content="川小桥 | 无止 - 校园无障碍环境监测与互助地图系统 ">
     <meta name="theme-color" content="#3b82f6">
-    <title>川小桥 | 无止 - 校园无障碍环境监测与互助地图系统 (V25.0)</title>
+    <title>川小桥 | 无止 - 校园无障碍环境监测与互助地图系统</title>
     
     <!-- ==================================================================================
          1. 核心依赖库 (CDN)
@@ -102,7 +102,7 @@
 
         const safeRender = (val) => (val === null || val === undefined || typeof val === 'object') ? '' : String(val);
 
-        // 2. 配置 (STRICTLY PRESERVED)
+        // 2. 配置
         const FIREBASE_CONFIG = { apiKey: "AIzaSyCcBlaYfmLizo1E6mV87U6ytReqSuMTX5M", authDomain: "scuwzq-9bcfb.firebaseapp.com", projectId: "scuwzq-9bcfb", storageBucket: "scuwzq-9bcfb.firebasestorage.app", messagingSenderId: "1028374721634", appId: "1:1028374721634:web:30714cb0acb6a951590d3b" };
         const GEMINI_API_KEY = ""; 
         const AI_ENDPOINT_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
@@ -136,6 +136,52 @@
         if (FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.apiKey.length > 5) {
             try { if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG); auth = firebase.auth(); db = firebase.firestore(); db.enablePersistence().catch(e=>{}); isOfflineMode = false; } catch (e) { console.error("Firebase Init Error", e); }
         }
+
+        // --- [核心] 图片压缩辅助函数 ---
+        const compressImage = (file, maxSizeMB = 1, maxWidth = 1920) => {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.src = event.target.result;
+                    img.onload = () => {
+                        let width = img.width;
+                        let height = img.height;
+
+                        // 尺寸限制
+                        if (width > maxWidth || height > maxWidth) {
+                            if (width > height) {
+                                height *= maxWidth / width;
+                                width = maxWidth;
+                            } else {
+                                width *= maxWidth / height;
+                                height = maxWidth;
+                            }
+                        }
+
+                        const canvas = document.createElement('canvas');
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+
+                        // 质量压缩循环
+                        let quality = 0.9;
+                        let dataUrl = canvas.toDataURL('image/jpeg', quality);
+                        
+                        while (dataUrl.length / 1024 / 1024 > maxSizeMB && quality > 0.1) {
+                            quality -= 0.1;
+                            dataUrl = canvas.toDataURL('image/jpeg', quality);
+                        }
+
+                        resolve(dataUrl);
+                    };
+                    img.onerror = (e) => reject(e);
+                };
+                reader.onerror = (e) => reject(e);
+            });
+        };
 
         // 4. 图标库
         const Icons = {
@@ -178,6 +224,9 @@
             History: ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
         };
 
+        // ----------------------------------------------------------------------------
+        // 5. 工具组件
+        // ----------------------------------------------------------------------------
         const vibrate = (pattern = 50) => { if (navigator.vibrate) navigator.vibrate(pattern); };
         const generateRandomName = () => '热心行者_' + Math.floor(Math.random()*1000);
         
@@ -207,6 +256,9 @@
             );
         };
 
+        // ----------------------------------------------------------------------------
+        // 6. MapView (地图核心)
+        // ----------------------------------------------------------------------------
         const MapView = React.memo(({ markers, selectedMarkerId, activeTool, onMapClick, onMarkerClick, onMapReady, activeBaseLayer, visibleTypes, currentUserId, customRegions, drawingPoints, currentRoutePoints, customRoutes, onRouteClick, onRegionClick, activeElementFilters, activeImageryFilter }) => {
             const mapRef = useRef(null);
             const layers = useRef({});
@@ -231,6 +283,7 @@
                 }
             }, [activeBaseLayer]);
 
+            // 地图要素 (Overpass)
             useEffect(() => {
                 if (!layers.current.element) return;
                 layers.current.element.clearLayers();
@@ -250,6 +303,7 @@
                 }).catch(e=>{}).finally(()=>document.body.classList.remove('scanning'));
             }, [activeElementFilters]);
 
+            // 城市意象 (Kevin Lynch)
             useEffect(() => {
                 if (!layers.current.imagery) return;
                 layers.current.imagery.clearLayers();
@@ -271,6 +325,7 @@
                     });
                 }).catch(e=>{}).finally(()=>document.body.classList.remove('scanning'));
             }, [activeImageryFilter]);
+
 
             useEffect(() => {
                 if (!layers.current.routes) return;
@@ -323,6 +378,7 @@
                 });
             }, [markers, selectedMarkerId, visibleTypes, currentUserId]);
 
+            // [升级] 动态光标
             useEffect(() => {
                 const el = document.getElementById('map-container');
                 if(el) {
@@ -335,7 +391,11 @@
             return <div id="map-container"></div>;
         });
 
+        // ----------------------------------------------------------------------------
+        // 7. App Controller
+        // ----------------------------------------------------------------------------
         const App = () => {
+            // 状态管理
             const [markers, setMarkers] = useState([]);
             const [activeTool, setActiveTool] = useState(null);
             const [selectedMarkerId, setSelectedMarkerId] = useState(null);
@@ -362,6 +422,7 @@
             const [drawingPoints, setDrawingPoints] = useState([]); 
             const [currentRoutePoints, setCurrentRoutePoints] = useState([]);
             const [customRoutes, setCustomRoutes] = useState([]);
+            
             const mapInstanceRef = useRef(null);
             const markerImageInputRef = useRef(null);
             const [aiAnalysisResult, setAiAnalysisResult] = useState(null);
@@ -370,6 +431,28 @@
             const searchTimeoutRef = useRef(null);
 
             const safeParse = (key, fb) => { try { const i = localStorage.getItem(key); return i ? JSON.parse(i) : fb; } catch(e){ return fb; } };
+
+            // [核心修复] 安全保存到本地存储
+            const saveToLocal = (key, data) => {
+                try {
+                    localStorage.setItem(key, JSON.stringify(data));
+                    return true;
+                } catch (e) {
+                    if (e.name === 'QuotaExceededError') {
+                        // 如果是标记数据，尝试去除图片后保存
+                        if (key === 'offline_markers' && Array.isArray(data)) {
+                            try {
+                                const leanData = data.map(m => ({...m, imageUrl: ''})); 
+                                localStorage.setItem(key, JSON.stringify(leanData));
+                                showToast("⚠️ 本地空间已满，仅保存文本数据");
+                                return true;
+                            } catch (e2) { return false; }
+                        }
+                    }
+                    console.error("Storage Error:", e);
+                    return false;
+                }
+            };
 
             useEffect(() => {
                 // 1. Load LocalStorage first (Always!)
@@ -403,20 +486,17 @@
                     auth.onAuthStateChanged(user => {
                         setIsConnected(!!user);
                         if (user) {
-                            // If online, listen to DB, BUT ALSO MERGE or respect LocalStorage
+                            // If online, listen to DB
                             const unsubscribe = db.collection('markers').onSnapshot(snap => {
                                 const loaded = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(m => m.lat && m.lng); 
-                                // Simple strategy: Use DB as truth if connected, but fallback logic handles updates.
-                                // For V25, let's stick to: If DB updates, we update state. 
-                                // We also update LS whenever state changes (in the update functions).
                                 setMarkers(loaded);
-                                localStorage.setItem('offline_markers', JSON.stringify(loaded));
+                                // [Fix] Use safe save
+                                saveToLocal('offline_markers', loaded);
                             }, err => console.error("Snapshot Error", err));
                             return () => unsubscribe();
                         }
                     });
                 }
-                // Note: We already loaded LS in the first useEffect.
             }, []);
 
             const showToast = useCallback((msg) => setToastMsg(msg), []);
@@ -492,7 +572,7 @@
                 // Optimistic Update & Persistence
                 const updated = [...markers, newM];
                 setMarkers(updated);
-                localStorage.setItem('offline_markers', JSON.stringify(updated));
+                saveToLocal('offline_markers', updated);
                 showToast("📍 标记已保存");
 
                 if (!isOfflineMode && db && isConnected) {
@@ -501,7 +581,7 @@
                         // Update ID if success
                         const confirmed = updated.map(m => m.id === newM.id ? { ...m, id: ref.id } : m);
                         setMarkers(confirmed);
-                        localStorage.setItem('offline_markers', JSON.stringify(confirmed));
+                        saveToLocal('offline_markers', confirmed);
                         return ref.id; 
                     } catch (e) { return newM.id; }
                 }
@@ -511,7 +591,7 @@
             const updateLocalMarker = (id, up) => {
                 const updated = markers.map(m => m.id === id ? { ...m, ...up } : m);
                 setMarkers(updated);
-                localStorage.setItem('offline_markers', JSON.stringify(updated));
+                saveToLocal('offline_markers', updated);
                 
                 if (!isOfflineMode && db && isConnected && !id.startsWith('m_')) {
                     db.collection('markers').doc(id).update(up).catch(e=>{});
@@ -523,7 +603,7 @@
                  if (!confirm("删除此标记？")) return;
                  const updated = markers.filter(m => m.id !== id);
                  setMarkers(updated);
-                 localStorage.setItem('offline_markers', JSON.stringify(updated));
+                 saveToLocal('offline_markers', updated);
                  setSelectedMarkerId(null);
                  showToast("已删除");
                  
@@ -581,12 +661,65 @@
                 }
             };
 
-            const handleMarkerImageUpload = (e, id) => {
+            // 图片压缩工具函数
+            const compressImage = (file, maxSizeMB = 1, maxWidth = 1920) => {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.readAsDataURL(file);
+                    reader.onload = (event) => {
+                        const img = new Image();
+                        img.src = event.target.result;
+                        img.onload = () => {
+                            let width = img.width;
+                            let height = img.height;
+
+                            // 保持宽高比缩放
+                            if (width > maxWidth || height > maxWidth) {
+                                if (width > height) {
+                                    height *= maxWidth / width;
+                                    width = maxWidth;
+                                } else {
+                                    width *= maxWidth / height;
+                                    height = maxWidth;
+                                }
+                            }
+
+                            const canvas = document.createElement('canvas');
+                            canvas.width = width;
+                            canvas.height = height;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0, width, height);
+
+                            // 初始质量
+                            let quality = 0.8;
+                            let dataUrl = canvas.toDataURL('image/jpeg', quality);
+
+                            // 循环压缩直到小于 maxSizeMB
+                            while (dataUrl.length / 1024 / 1024 > maxSizeMB && quality > 0.1) {
+                                quality -= 0.1;
+                                dataUrl = canvas.toDataURL('image/jpeg', quality);
+                            }
+
+                            resolve(dataUrl);
+                        };
+                        img.onerror = error => reject(error);
+                    };
+                    reader.onerror = error => reject(error);
+                });
+            };
+
+            const handleMarkerImageUpload = async (e, id) => {
                 const file = e.target.files[0];
                 if (file) {
-                    const r = new FileReader();
-                    r.onload = (ev) => updateLocalMarker(id, { imageUrl: ev.target.result });
-                    r.readAsDataURL(file);
+                    try {
+                        showToast("正在压缩图片..."); // Add a toast to indicate processing
+                        const compressedDataUrl = await compressImage(file, 1); // Max 1MB
+                        updateLocalMarker(id, { imageUrl: compressedDataUrl });
+                        showToast("图片上传成功");
+                    } catch (err) {
+                        console.error("Image processing failed", err);
+                        showToast("图片处理失败，请重试");
+                    }
                 }
             };
 
@@ -720,9 +853,14 @@
                         <div className="scanning-bar"></div>
                         {!showSidebar && <div className="absolute top-4 left-4 pointer-events-auto z-[1100] anim-scale-in"><button onClick={()=>{vibrate(); setShowSidebar(true);}} className="toggle-sidebar-btn bg-white w-12 h-12 rounded-full shadow-lg flex items-center justify-center border-2 border-blue-500 text-blue-600 active:bg-blue-50"><Icons.Menu size={24}/></button></div>}
                         
+                        {/* 底部栏 - 重构版 */}
                         <div className="absolute bottom-0 left-0 right-0 h-20 bg-white/95 backdrop-blur-md border-t border-slate-200 flex justify-between items-center px-6 z-[1100] pointer-events-auto shadow-2xl">
                             <button onClick={handleLocateMe} className="p-3 rounded-full bg-blue-50 text-blue-600 shadow-sm hover:bg-blue-100 active:scale-95 transition"><Icons.Locate size={24}/></button>
                             
+                            {/* 中间：统计 */}
+                            <button onClick={()=>setShowStats(true)} className="flex flex-col items-center gap-1 text-slate-500 hover:text-blue-600 active:scale-95 transition"><Icons.BarChart2 size={28}/><span className="text-[10px] font-bold">数据统计</span></button>
+                            
+                            {/* 右侧：FAB */}
                             <div className="relative">
                                 {showFABMenu && <div className="absolute bottom-16 right-0 flex flex-col gap-3 items-end anim-scale-in origin-bottom-right w-40 pb-2">
                                     <button onClick={()=>{setActiveTool('experience'); setShowFABMenu(false); showToast("点击地图添加");}} className="w-full fab-btn flex items-center justify-between bg-blue-500 text-white px-4 py-2.5 rounded-full shadow-lg"><span className="text-sm font-bold">体验点</span><Icons.Users/></button>
@@ -745,9 +883,10 @@
                         
                         <div className={`sidebar-panel absolute top-0 left-0 h-full bg-white/95 backdrop-blur-md border-r border-slate-200 flex flex-col shadow-2xl pointer-events-auto z-[2000] w-80 max-w-[85vw] transform ${showSidebar ? 'translate-x-0' : '-translate-x-full'}`}>
                             <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                                <div><h1 className="text-xl font-black flex gap-2 text-slate-800 items-center tracking-tight"><span className="text-blue-600"><Icons.Navigation size={24}/></span> 川小桥 <span className="text-[10px] px-2 py-0.5 bg-indigo-500 text-white rounded-md font-bold tracking-wider">V25.0</span></h1><div className="mt-2 flex items-center gap-2 text-xs"><input value={userName} onChange={e => {setUserName(e.target.value); localStorage.setItem('user_nickname', e.target.value);}} className="border-b border-slate-300 w-20 bg-transparent outline-none font-bold text-slate-700" placeholder="昵称"/><button onClick={() => setIsHighContrast(!isHighContrast)} className={`flex items-center gap-1 p-1 rounded ${isHighContrast ? 'text-blue-600 font-bold bg-blue-50' : 'text-slate-400'}`}><Icons.Moon size={12}/> {isHighContrast ? '关' : '模式'}</button></div></div><button className="text-slate-400 hover:bg-slate-100 p-2 rounded-full" onClick={() => setShowSidebar(false)}><Icons.X size={20}/></button>
+                                <div><h1 className="text-xl font-black flex gap-2 text-slate-800 items-center tracking-tight"><span className="text-blue-600"><Icons.Navigation size={24}/></span> 川小桥 <span className="text-[10px] px-2 py-0.5 bg-indigo-500 text-white rounded-md font-bold tracking-wider">V1.00</span></h1><div className="mt-2 flex items-center gap-2 text-xs"><input value={userName} onChange={e => {setUserName(e.target.value); localStorage.setItem('user_nickname', e.target.value);}} className="border-b border-slate-300 w-20 bg-transparent outline-none font-bold text-slate-700" placeholder="昵称"/><button onClick={() => setIsHighContrast(!isHighContrast)} className={`flex items-center gap-1 p-1 rounded ${isHighContrast ? 'text-blue-600 font-bold bg-blue-50' : 'text-slate-400'}`}><Icons.Moon size={12}/> {isHighContrast ? '关' : '模式'}</button></div></div><button className="text-slate-400 hover:bg-slate-100 p-2 rounded-full" onClick={() => setShowSidebar(false)}><Icons.X size={20}/></button>
                             </div>
                             
+                            {/* 侧边栏 Tabs */}
                             <div className="flex border-b border-slate-200 bg-white">
                                 <button onClick={()=>setSidebarTab('main')} className={`flex-1 py-3 text-sm font-bold transition-colors ${sidebarTab==='main'?'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50':'text-slate-400 hover:text-slate-600'}`}>功能地图</button>
                                 <button onClick={()=>setSidebarTab('manage')} className={`flex-1 py-3 text-sm font-bold transition-colors ${sidebarTab==='manage'?'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50':'text-slate-400 hover:text-slate-600'}`}>数据管理</button>
